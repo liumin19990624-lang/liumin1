@@ -18,6 +18,9 @@ export interface SceneImage {
   id: string;
   shotDescription: string;
   imageUrl: string;
+  videoUrl?: string; 
+  duration: number; // 镜头时长（秒）
+  isGeneratingVideo?: boolean;
 }
 
 export interface ScriptBlock {
@@ -27,8 +30,18 @@ export interface ScriptBlock {
   content: string;
   sceneImages?: SceneImage[];
   directorNotes?: string;
-  loreContextIds?: string[]; // 锁定的知识库ID
-  isBatchProcessing?: boolean; // 批处理状态标记
+  style?: DirectorStyle;
+  styleMixer?: string[]; // 叠加风格滤گیر
+  continuityStatus?: string; // 叙事状态链
+  created_at?: string;
+}
+
+export enum DirectorStyle {
+  SHINKAI = '清新诚意 (新海诚感)',
+  UFOTABLE = '绚烂特效 (飞碟社感)',
+  SHAFT = '抽象转场 (新房昭之感)',
+  MAPPA = '硬核写实 (MAPPA感)',
+  GHIBLI = '治愈人文 (吉卜力感)',
 }
 
 export enum ModelType {
@@ -58,4 +71,12 @@ export enum WorkspaceTab {
 export enum AudienceMode {
   MALE = '男频模式',
   FEMALE = '女频模式',
+}
+
+export enum AmbientAtmosphere {
+  QUIET = '寂静室内',
+  RAIN = '科幻细雨',
+  BATTLE = '战场硝烟',
+  MYSTIC = '神秘遗迹',
+  CITY = '赛博街道'
 }

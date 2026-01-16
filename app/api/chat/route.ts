@@ -11,9 +11,10 @@ export async function POST(req: NextRequest) {
   try {
     const { prompt, config, systemInstruction } = await req.json();
     
-    // 1. 额度预判 (图像 2 额度，文本 1 额度)
-    const isImageTask = config?.model?.includes('image');
-    const creditCost = isImageTask ? 2 : 1;
+    // 智能计费：图像 3 额度，视频 5 额度，文本 1 额度
+    const modelName = config?.model || 'gemini-3-pro-preview';
+    const isImageTask = modelName.includes('image');
+    const creditCost = isImageTask ? 3 : 1;
 
     const { data: creditCheck } = await supabase.rpc('decrement_credits_safe', {
       target_user_id: userId,
@@ -21,14 +22,12 @@ export async function POST(req: NextRequest) {
     });
 
     if (!creditCheck?.[0]?.success) {
-      return NextResponse.json({ error: "算力点数不足，请及时补充", code: "NO_CREDITS" }, { status: 403 });
+      return NextResponse.json({ error: "算力点数枯竭，无法驱动高维模型", code: "NO_CREDITS" }, { status: 403 });
     }
 
-    // 2. 初始化 AI
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const modelName = config?.model || 'gemini-3-pro-preview';
-
-    // 自动配置思考预算 (仅限 3 和 2.5 系列)
+    
+    // 为 Pro 级别模型自动启用 16K 思考预算，增强剧本逻辑
     const thinkingConfig = modelName.includes('pro') ? { thinkingBudget: 16384 } : undefined;
 
     const response = await ai.models.generateContent({
@@ -36,15 +35,15 @@ export async function POST(req: NextRequest) {
       contents: prompt,
       config: {
         ...config,
-        systemInstruction: systemInstruction || "你是一个资深的漫剧导演。",
+        systemInstruction: systemInstruction || "你是一个顶级 2D 动漫剧本导演，专注于爽文改编。",
         thinkingConfig
       },
     });
 
-    // 3. 多模态内容解析
     let text = response.text || "";
     let image = null;
 
+    // 解析多模态返回（支持 inlineData 图像）
     if (response.candidates?.[0]?.content?.parts) {
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) {
@@ -60,7 +59,7 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error("Gemini API Error:", error);
+    console.error("Gemini API Engine Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

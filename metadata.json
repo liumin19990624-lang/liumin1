@@ -1,6 +1,6 @@
 {
-  "name": "Copy of 漫剧剧本智能适配大师",
-  "description": "专业级网文改编2D动漫剧本智能体，支持因果律锚定与高维打击台词模型，适配2025年漫剧市场节奏。",
+  "name": "漫剧剧本智能适配大师 Pro",
+  "description": "2025年顶级 2D 动漫改编智能体。支持 Veo 动态分镜渲染、因果律叙事锚定与全自动化生产流。",
   "requestFramePermissions": [
     "camera",
     "microphone"
