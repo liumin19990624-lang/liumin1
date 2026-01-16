@@ -1,0 +1,8 @@
+{
+  "name": "Copy of 漫剧剧本智能适配大师",
+  "description": "专业级网文改编2D动漫剧本智能体，支持因果律锚定与高维打击台词模型，适配2025年漫剧市场节奏。",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
