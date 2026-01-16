@@ -14,19 +14,34 @@ export interface KBFile {
   uploadDate: string;
 }
 
-export interface ScriptBlock {
-  episodes: string; // e.g. "1-3"
-  content: string;
+export interface SceneImage {
+  id: string;
+  shotDescription: string;
+  imageUrl: string;
 }
 
-export interface CharacterInfo {
+export interface ScriptBlock {
+  id: string;
+  sourceId: string;
+  episodes: string;
+  content: string;
+  sceneImages?: SceneImage[];
+  directorNotes?: string;
+  loreContextIds?: string[]; // 锁定的知识库ID
+  isBatchProcessing?: boolean; // 批处理状态标记
+}
+
+export enum ModelType {
+  FLASH = 'gemini-3-flash-preview',
+  PRO = 'gemini-3-pro-preview'
+}
+
+export interface CharacterAsset {
+  id: string;
   name: string;
-  gender: string;
-  age: string;
-  relation: string;
-  personality: string;
-  image: string;
-  chapters: string;
+  description: string;
+  image_url: string;
+  voice_id?: string;
 }
 
 export enum AppStage {
@@ -37,6 +52,7 @@ export enum AppStage {
 export enum WorkspaceTab {
   SCRIPT = 'SCRIPT',
   OUTLINE = 'OUTLINE',
+  VISUALS = 'VISUALS',
 }
 
 export enum AudienceMode {

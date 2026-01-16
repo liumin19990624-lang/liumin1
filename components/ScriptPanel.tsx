@@ -1,297 +1,415 @@
-
-import React, { useState, useEffect, useMemo } from 'react';
-import { KBFile, Category, AudienceMode, ScriptBlock } from '../types';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { KBFile, Category, AudienceMode, ScriptBlock, ModelType, CharacterAsset } from '../types';
 import { ICONS } from '../constants';
 import { GeminiService } from '../services/geminiService';
-import { DocGenerator } from '../services/docGenerator';
+import CinematicPreview from './CinematicPreview';
 
-interface ScriptPanelProps {
-  files: KBFile[];
-  mode: AudienceMode;
+// PCM Audio Decoding Utilities
+function decodeBase64(base64: string) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
+  return bytes;
 }
 
-const ScriptViewer: React.FC<{ content: string }> = ({ content }) => {
-  const lines = useMemo(() => content.split('\n'), [content]);
+async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+  }
+  return buffer;
+}
+
+const REWRITE_STYLES = [
+  { id: 'epic', label: '史诗质感', color: 'bg-amber-500' },
+  { id: 'villain', label: '反派冷酷', color: 'bg-slate-900' },
+  { id: 'emotional', label: '情感爆发', color: 'bg-rose-500' },
+  { id: 'chuunibyou', label: '中二觉醒', color: 'bg-indigo-600' },
+];
+
+interface ScriptViewerProps {
+  blockId: string;
+  content: string;
+  onVisualizeShot: (shot: string) => void;
+  onUpdateContent: (newContent: string) => void;
+  isGeneratingShot: boolean;
+  characterAssets: CharacterAsset[];
+  onOpenPreview: () => void;
+}
+
+const ScriptViewer: React.FC<ScriptViewerProps> = ({ blockId, content, onVisualizeShot, onUpdateContent, isGeneratingShot, characterAssets, onOpenPreview }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(content);
+  const [playingLine, setPlayingLine] = useState<number | null>(null);
+  const [activeRewriteIdx, setActiveRewriteIdx] = useState<number | null>(null);
+  const [isRewriting, setIsRewriting] = useState(false);
+  
+  const gemini = new GeminiService();
+  const audioContextRef = useRef<AudioContext | null>(null);
+
+  const { scriptGroups, directorNote } = useMemo(() => {
+    const lines = content.split('\n');
+    const groups: any[] = [];
+    let currentGroup: any = null;
+    let note = "";
+    let isNoteMode = false;
+
+    lines.forEach(line => {
+      const cleaned = line.trim();
+      if (!cleaned) return;
+      if (cleaned.startsWith('[DirectorNote]')) { isNoteMode = true; return; }
+      if (isNoteMode) { note += cleaned + " "; return; }
+
+      if (cleaned.startsWith('第') && cleaned.includes('集')) {
+        groups.push({ type: 'HEADING', text: cleaned });
+      } else if (cleaned.startsWith('[Shot:')) {
+        currentGroup = {
+          type: 'SHOT',
+          id: cleaned.match(/\[Shot:(.*?)\]/)?.[1] || '---',
+          duration: cleaned.match(/\[Duration:(.*?)\]/)?.[1] || '2s',
+          visual: cleaned.split(']').slice(2).join(']').trim(),
+          audio: [],
+          bgm: null
+        };
+        groups.push(currentGroup);
+      } else if (cleaned.startsWith('[BGM:')) {
+        if (currentGroup) currentGroup.bgm = cleaned.replace('[BGM:', '').replace(']', '');
+      } else if (cleaned.startsWith('[角色:') || cleaned.startsWith('[音效:')) {
+        if (currentGroup) currentGroup.audio.push(cleaned);
+      }
+    });
+    return { scriptGroups: groups, directorNote: note };
+  }, [content]);
+
+  const handlePlayAudio = async (charName: string, text: string, idx: number) => {
+    if (playingLine !== null) return;
+    setPlayingLine(idx);
+    try {
+      const asset = characterAssets.find(a => a.name === charName);
+      const audioDataUri = await gemini.generateDialogueAudio(charName, text, asset?.voice_id);
+      const base64Data = audioDataUri.split('base64,')[1];
+      if (!base64Data) return;
+      if (!audioContextRef.current) audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      const ctx = audioContextRef.current;
+      const audioBuffer = await decodeAudioData(decodeBase64(base64Data), ctx, 24000, 1);
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(ctx.destination);
+      source.onended = () => setPlayingLine(null);
+      source.start();
+    } catch (e) {
+      console.error(e);
+      setPlayingLine(null);
+    }
+  };
+
+  const handleRewrite = async (charName: string, originalText: string, styleLabel: string, idxInContent: number) => {
+    setIsRewriting(true);
+    try {
+      const newText = await gemini.rewriteDialogue(charName, originalText, styleLabel);
+      const lines = content.split('\n');
+      // 精确替换逻辑
+      const escapedText = originalText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`\\[角色:${charName}\\]\\[台词:${escapedText}\\]`);
+      const newLines = lines.map(line => line.replace(regex, `[角色:${charName}][台词:${newText}]`));
+      onUpdateContent(newLines.join('\n'));
+    } catch (e) {
+      alert("对白重写失败");
+    } finally {
+      setIsRewriting(false);
+      setActiveRewriteIdx(null);
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <div className="space-y-4">
+        <textarea
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          className="w-full h-[500px] p-8 font-mono text-sm bg-slate-900 text-slate-300 border border-white/10 rounded-3xl outline-none"
+        />
+        <div className="flex justify-end gap-3">
+          <button onClick={() => setIsEditing(false)} className="px-4 py-2 text-slate-500 font-bold text-xs uppercase">Cancel</button>
+          <button onClick={() => { onUpdateContent(editValue); setIsEditing(false); }} className="px-6 py-2 bg-blue-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg">Save Script</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4 font-sans selection:bg-blue-100">
-      {lines.map((line, i) => {
-        // 去除所有常见的 Markdown 引导符和星号
-        const cleaned = line.replace(/^[#\s\>\-\*]+/, '').replace(/\*/g, '').trim();
-        if (!cleaned) return <div key={i} className="h-4" />;
+    <div className="space-y-8">
+      <div className="flex items-center justify-between gap-4">
+        {directorNote ? (
+          <div className="flex-1 bg-amber-50 border border-amber-100 p-6 rounded-3xl flex gap-4 items-start">
+            <div className="bg-amber-500 text-white p-2 rounded-xl">{ICONS.Sparkles}</div>
+            <p className="text-amber-800/80 text-sm italic font-medium leading-relaxed">{directorNote}</p>
+          </div>
+        ) : <div className="flex-1" />}
+        
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setIsEditing(true)}
+            className="p-4 bg-white border border-slate-200 text-slate-500 rounded-3xl hover:bg-slate-50 transition-all shadow-sm"
+          >
+            {ICONS.Refine}
+          </button>
+          <button 
+            onClick={onOpenPreview}
+            className="bg-slate-900 text-white px-8 py-4 rounded-3xl font-black text-xs uppercase tracking-[0.2em] flex items-center gap-3 hover:scale-105 transition-all shadow-xl"
+          >
+            {ICONS.Play} 视听导演预览
+          </button>
+        </div>
+      </div>
 
-        // 集数标题
-        if (cleaned.startsWith('第') && cleaned.includes('集')) {
-          return (
-            <div key={i} className="mt-8 mb-4 border-l-4 border-slate-900 pl-4">
-              <h3 className="text-2xl font-black text-slate-900 tracking-tight">{cleaned}</h3>
-            </div>
-          );
-        }
+      <div className="relative group/viewer">
+        <div className="space-y-1">
+          {scriptGroups.map((group, idx) => {
+            if (group.type === 'HEADING') {
+              return (
+                <div key={idx} className="mt-12 mb-6 bg-slate-900 text-white px-8 py-4 rounded-3xl flex items-center justify-between border-l-8 border-blue-600">
+                  <h3 className="text-xl font-black italic uppercase tracking-tight">{group.text}</h3>
+                  <span className="text-[10px] font-mono opacity-30">EPISODE_SEQ_CONFIRMED</span>
+                </div>
+              );
+            }
 
-        // 钩子
-        if (cleaned.startsWith('本集钩子') || cleaned.includes('悬念')) {
-          return (
-            <div key={i} className="bg-amber-50 border border-amber-200 p-4 rounded-xl my-4 flex gap-3">
-              <div className="text-amber-500 mt-1">{ICONS.Zap}</div>
-              <p className="text-amber-900 font-bold text-sm italic leading-relaxed">{cleaned}</p>
-            </div>
-          );
-        }
+            if (group.type === 'SHOT') {
+              return (
+                <div key={idx} className="grid grid-cols-12 gap-0 border-b border-slate-100 group/row">
+                  <div className="col-span-2 py-8 pr-6 border-r border-slate-100 flex flex-col items-end gap-2">
+                    <span className="bg-slate-900 text-white px-2 py-0.5 rounded text-[10px] font-mono">#{group.id}</span>
+                    <span className="text-slate-400 text-[10px] font-black uppercase flex items-center gap-1">{ICONS.Clock} {group.duration}</span>
+                  </div>
 
-        // 场景
-        if (cleaned.startsWith('场景')) {
-          return (
-            <div key={i} className="bg-slate-100 px-4 py-1.5 rounded-lg inline-block text-xs font-black text-slate-500 uppercase tracking-widest my-4">
-              🎬 {cleaned}
-            </div>
-          );
-        }
+                  <div className="col-span-5 p-8 border-r border-slate-100 relative group/v">
+                    <p className="text-slate-800 text-sm font-bold leading-relaxed">{group.visual}</p>
+                    <button 
+                      onClick={() => onVisualizeShot(group.visual)}
+                      disabled={isGeneratingShot}
+                      className="absolute bottom-6 right-6 p-2.5 bg-blue-50 text-blue-600 rounded-xl opacity-0 group-hover/v:opacity-100 hover:bg-blue-600 hover:text-white transition-all shadow-md"
+                    >
+                      {isGeneratingShot ? <div className="animate-spin">{ICONS.Refresh}</div> : ICONS.Image}
+                    </button>
+                  </div>
 
-        // 对话 (格式：角色名：台词)
-        if (cleaned.includes('：') || cleaned.includes(':')) {
-          const sep = cleaned.includes('：') ? '：' : ':';
-          const parts = cleaned.split(sep);
-          // 逻辑判断：如果冒号前字符不多（通常是名字），则渲染为对话格式
-          if (parts[0].length > 0 && parts[0].length < 15) {
-            return (
-              <div key={i} className="pl-6 relative py-2 group hover:bg-slate-50 transition-colors rounded-lg">
-                <div className="absolute left-0 top-3 w-1 h-full bg-slate-200 group-hover:bg-blue-400 transition-colors"></div>
-                <span className="font-black text-slate-900 mr-2">{parts[0]}</span>
-                <span className="text-slate-800 leading-relaxed text-lg tracking-wide">{parts.slice(1).join(sep)}</span>
-              </div>
-            );
-          }
-        }
+                  <div className="col-span-5 p-8 bg-slate-50/30">
+                    <div className="space-y-4">
+                      {group.audio.map((a: string, aidx: number) => {
+                        const globalIdx = aidx + idx * 100;
+                        if (a.startsWith('[角色:')) {
+                          const name = a.match(/\[角色:(.*?)\]/)?.[1] || '---';
+                          const text = a.split('台词:').slice(1).join('台词:').replace(/\]$/, '').trim();
+                          return (
+                            <div key={aidx} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm relative group/audio overflow-visible">
+                              <span className="inline-block px-1.5 py-0.5 bg-slate-800 text-white rounded text-[8px] font-black mb-1.5">{name}</span>
+                              <p className="text-slate-800 text-sm font-medium italic leading-relaxed">“{text}”</p>
+                              
+                              <div className="absolute top-2 right-2 flex gap-1">
+                                <button 
+                                  onClick={() => setActiveRewriteIdx(activeRewriteIdx === globalIdx ? null : globalIdx)}
+                                  className="p-1.5 text-slate-300 hover:text-indigo-600 transition-all"
+                                >
+                                  {ICONS.Refine}
+                                </button>
+                                <button 
+                                  onClick={() => handlePlayAudio(name, text, globalIdx)}
+                                  className={`p-1.5 rounded-full transition-all ${playingLine === globalIdx ? 'bg-blue-600 text-white' : 'text-slate-200 hover:text-blue-600 hover:bg-blue-50'}`}
+                                >
+                                  {ICONS.Chat}
+                                </button>
+                              </div>
 
-        // 动作描述或其他
-        if (cleaned.startsWith('动作') || cleaned.startsWith('[') || cleaned.startsWith('（')) {
-          return (
-            <p key={i} className="text-slate-400 text-sm italic pl-6 leading-relaxed my-2">
-              {cleaned}
-            </p>
-          );
-        }
-
-        return (
-          <p key={i} className="text-slate-700 leading-relaxed pl-6">
-            {cleaned}
-          </p>
-        );
-      })}
+                              {activeRewriteIdx === globalIdx && (
+                                <div className="absolute left-0 -bottom-14 w-full bg-slate-900 p-2 rounded-xl shadow-2xl z-20 flex gap-2 animate-in fade-in slide-in-from-top-2">
+                                  {REWRITE_STYLES.map(style => (
+                                    <button
+                                      key={style.id}
+                                      disabled={isRewriting}
+                                      onClick={() => handleRewrite(name, text, style.label, globalIdx)}
+                                      className={`flex-1 text-[9px] font-black text-white px-2 py-1.5 rounded-lg hover:opacity-80 transition-all ${style.color}`}
+                                    >
+                                      {isRewriting ? '...' : style.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+                        return <p key={aidx} className="text-blue-500 text-[10px] font-bold px-2 italic">SFX: {a.replace('[音效:', '').replace(']', '')}</p>;
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })}
+        </div>
+      </div>
     </div>
   );
 };
 
-const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode }) => {
+const ScriptPanel: React.FC<{ files: KBFile[], mode: AudienceMode, modelType: ModelType }> = ({ files, mode, modelType }) => {
   const [sourceId, setSourceId] = useState<string>('');
-  const [refId, setRefId] = useState<string>('');
+  const [lockedLoreIds, setLockedLoreIds] = useState<string[]>([]);
   const [blocks, setBlocks] = useState<ScriptBlock[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [loadingMsg, setLoadingMsg] = useState('');
-  const [progress, setProgress] = useState(0);
-
-  const plotFiles = files.filter(f => f.category === Category.PLOT);
-  const refFiles = files.filter(f => f.category === Category.REFERENCE);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isGeneratingShot, setIsGeneratingShot] = useState(false);
+  const [targetEpisodes, setTargetEpisodes] = useState('1');
+  const [characterAssets, setCharacterAssets] = useState<CharacterAsset[]>([]);
+  const [selectedAssetId, setSelectedAssetId] = useState<string>('');
+  const [previewBlockId, setPreviewBlockId] = useState<string | null>(null);
+  
   const gemini = new GeminiService();
 
   useEffect(() => {
-    let interval: any;
-    if (isLoading) {
-      setProgress(0);
-      interval = setInterval(() => {
-        setProgress(p => (p < 95 ? p + Math.random() * 5 : p));
-      }, 400);
-    } else {
-      clearInterval(interval);
-      setProgress(0);
+    fetchVisualAssets();
+    if (sourceId) {
+      fetch(`/api/scripts?sourceId=${sourceId}`).then(res => res.json()).then(data => setBlocks(data));
     }
-    return () => clearInterval(interval);
-  }, [isLoading]);
+  }, [sourceId]);
 
-  const generateNext = async () => {
-    if (!sourceId) {
-      alert("请选择小说原著作为作业锚点");
-      return;
-    }
-    setIsLoading(true);
-    const startEp = (blocks.length * 3) + 1;
-    const targetRange = `${startEp}-${startEp + 2}`;
-    setLoadingMsg(`AI 改改编引擎作业中：第 ${targetRange} 集...`);
+  const fetchVisualAssets = async () => {
+    const res = await fetch('/api/visuals');
+    if (res.ok) setCharacterAssets(await res.json());
+  };
+
+  const handleUpdateScript = async (blockId: string, newContent: string) => {
+    const res = await fetch('/api/scripts', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: blockId, content: newContent })
+    });
+    if (res.ok) setBlocks(prev => prev.map(b => b.id === blockId ? { ...b, content: newContent } : b));
+  };
+
+  const handleGenerate = async () => {
+    if (!sourceId) return alert("请先选择创作来源");
+    setIsGenerating(true);
     try {
-      const sourceFile = files.find(f => f.id === sourceId);
-      const refFile = files.find(f => f.id === refId);
-      const content = await gemini.generateScriptBlock(
-        mode,
-        sourceFile?.content || '',
-        refFile?.content || '',
-        blocks,
-        targetRange
-      );
-      setBlocks(prev => [...prev, { episodes: targetRange, content }]);
-    } catch (error) {
-      console.error(error);
-      alert("生成失败，请检查 API 状态。");
+      const source = files.find(f => f.id === sourceId);
+      const loreDocs = files.filter(f => lockedLoreIds.includes(f.id)).map(f => f.content);
+      const content = await gemini.generateScriptBlock(mode, source?.content || '', '', blocks, targetEpisodes, modelType, loreDocs);
+      
+      const res = await fetch('/api/scripts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceId, episodes: targetEpisodes, content })
+      });
+      // Fix: Await the response body before updating state, as await is not allowed in state setter callbacks.
+      if (res.ok) {
+        const newBlock = await res.json();
+        setBlocks(prev => [...prev, newBlock]);
+      }
     } finally {
-      setIsLoading(false);
+      setIsGenerating(false);
     }
   };
 
-  const regenerateBlock = async (index: number) => {
-    setIsLoading(true);
-    const block = blocks[index];
-    setLoadingMsg(`正在精准重刷第 ${block.episodes} 集...`);
+  const handleVisualizeShot = async (blockId: string, shotText: string) => {
+    setIsGeneratingShot(true);
     try {
-      const sourceFile = files.find(f => f.id === sourceId);
-      const refFile = files.find(f => f.id === refId);
-      const content = await gemini.generateScriptBlock(
-        mode,
-        sourceFile?.content || '',
-        refFile?.content || '',
-        blocks.slice(0, index),
-        block.episodes
-      );
-      const newBlocks = [...blocks];
-      newBlocks[index] = { ...block, content };
-      setBlocks(newBlocks);
-    } catch (error) {
-      console.error(error);
-      alert("重刷失败。");
+      const asset = characterAssets.find(a => a.id === selectedAssetId);
+      const imageUrl = await gemini.generateShotImage(shotText, mode, asset?.description);
+      const res = await fetch('/api/scripts/keyframes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blockId, shotDescription: shotText, imageUrl })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setBlocks(prev => prev.map(b => b.id === blockId ? { ...b, sceneImages: updated.sceneImages } : b));
+      }
     } finally {
-      setIsLoading(false);
+      setIsGeneratingShot(false);
     }
-  };
-
-  const downloadDoc = async () => {
-    // 导出时清洗内容，确保 Word 文档没有 Markdown 符号
-    const cleanContent = (text: string) => text.split('\n').map(l => l.replace(/^[#\s\>\-\*]+/, '').replace(/\*/g, '').trim()).join('\n');
-    const fullContent = blocks.map(b => `第 ${b.episodes} 集改编成果\n\n${cleanContent(b.content)}`).join('\n\n' + '-'.repeat(40) + '\n\n');
-    const title = `${mode}动漫剧本改编成果`;
-    const blob = await DocGenerator.createWordDoc(title, fullContent);
-    DocGenerator.downloadBlob(blob, `${title}_${new Date().getTime()}.docx`);
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-slate-50/30">
-      <div className="bg-white border-b border-slate-200 p-6 flex flex-wrap items-end gap-6 shadow-sm z-10">
-        <div className="flex-1 min-w-[280px]">
-          <label className="flex items-center gap-2 mb-2 ml-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-blue-600"></div>
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">原著小说源 (核心)</span>
-          </label>
-          <div className="relative">
-            <select 
-              value={sourceId} 
-              onChange={(e) => setSourceId(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold transition-all outline-none appearance-none cursor-pointer"
-            >
-              <option value="">点击指向知识库中的原著...</option>
-              {plotFiles.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-              {ICONS.ChevronRight}
+    <div className="flex-1 flex flex-col bg-white overflow-hidden">
+      {previewBlockId && (
+        <CinematicPreview 
+          block={blocks.find(b => b.id === previewBlockId)!} 
+          characterAssets={characterAssets} 
+          onClose={() => setPreviewBlockId(null)}
+        />
+      )}
+
+      <div className="bg-slate-900 border-b border-white/5 p-5 flex flex-col gap-4 shadow-2xl z-40">
+        <div className="flex items-center gap-6">
+          <div className="flex-1 grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">改编资料源 (章节内容)</label>
+              <select 
+                value={sourceId} onChange={e => setSourceId(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-4 py-2 text-xs font-bold outline-none"
+              >
+                <option value="" className="bg-slate-900">请选择小说内容...</option>
+                {files.filter(f => f.category === Category.PLOT).map(f => <option key={f.id} value={f.id} className="bg-slate-900">{f.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">画面参考资产</label>
+              <select 
+                value={selectedAssetId} onChange={e => setSelectedAssetId(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-4 py-2 text-xs font-bold outline-none"
+              >
+                <option value="" className="bg-slate-900">未指定参考立绘...</option>
+                {characterAssets.map(a => <option key={a.id} value={a.id} className="bg-slate-900">{a.name}</option>)}
+              </select>
             </div>
           </div>
-        </div>
-
-        <div className="flex-1 min-w-[280px]">
-          <label className="flex items-center gap-2 mb-2 ml-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">节奏/排版参考源</span>
-          </label>
-          <div className="relative">
-            <select 
-              value={refId} 
-              onChange={(e) => setRefId(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold transition-all outline-none appearance-none cursor-pointer"
-            >
-              <option value="">(可选) 强指向参考剧本...</option>
-              {refFiles.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-              {ICONS.ChevronRight}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            disabled={isLoading || !sourceId}
-            onClick={generateNext}
-            className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black text-sm flex items-center gap-3 shadow-xl hover:bg-black disabled:bg-slate-300 transition-all active:scale-95"
+          <button 
+            disabled={isGenerating || !sourceId} onClick={handleGenerate}
+            className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-8 py-3 font-black text-xs uppercase tracking-widest shadow-lg flex items-center gap-2 transition-all active:scale-95"
           >
-            {isLoading ? <div className="animate-spin">{ICONS.Refresh}</div> : ICONS.Play}
-            {blocks.length === 0 ? "启动改编引擎" : "续写三集"}
+            {isGenerating ? <div className="animate-spin">{ICONS.Refresh}</div> : ICONS.Play}
+            {isGenerating ? 'AI 正在推理中' : '开始剧本创作'}
           </button>
-          
-          {blocks.length > 0 && (
-            <button
-              onClick={downloadDoc}
-              className="bg-emerald-600 text-white p-3 rounded-xl shadow-xl hover:bg-emerald-700 transition-all"
-              title="导出纯净版剧本"
-            >
-              {ICONS.Download}
-            </button>
-          )}
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-8 space-y-12 custom-scrollbar relative bg-[#fdfaf2]">
-        {blocks.length === 0 && !isLoading && (
-          <div className="h-full flex flex-col items-center justify-center text-slate-300 gap-6 text-center">
-            <div className="w-24 h-24 rounded-full bg-white flex items-center justify-center shadow-inner border border-slate-100 opacity-50 mb-4">
-              <div className="scale-150">{ICONS.FileText}</div>
-            </div>
-            <div>
-              <p className="text-lg font-black tracking-widest text-slate-400 uppercase">等待指令激活</p>
-              <p className="text-xs text-slate-400 mt-2 font-bold">选择原著后开启 2025 漫剧节奏引擎</p>
-            </div>
-          </div>
-        )}
-
-        {blocks.map((block, idx) => (
-          <div key={idx} className="max-w-4xl mx-auto bg-white rounded-[1rem] shadow-xl border border-slate-200 overflow-hidden animate-fade-up relative">
-            <div className="absolute left-0 top-0 bottom-0 w-8 bg-slate-50 border-r border-slate-200 flex flex-col items-center pt-8 gap-4 opacity-40">
-              {[1,2,3,4,5,6,7,8,9,10].map(n => <div key={n} className="w-2 h-2 rounded-full bg-slate-300"></div>)}
-            </div>
-
-            <div className="bg-slate-900 ml-8 px-8 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <span className="text-[9px] font-black bg-blue-600 text-white px-2 py-0.5 rounded uppercase tracking-widest tracking-tight">EPISODE {block.episodes}</span>
-                <h6 className="text-white font-black text-lg">第 {block.episodes} 集改编完成</h6>
-              </div>
-              <button
-                disabled={isLoading}
-                onClick={() => regenerateBlock(idx)}
-                className="bg-slate-800 text-blue-400 hover:text-blue-300 hover:bg-slate-700 flex items-center gap-2 text-[10px] font-black px-4 py-2 rounded-lg transition-all"
-              >
-                {isLoading ? <div className="animate-spin">{ICONS.Refresh}</div> : ICONS.Refresh}
-                精准重写
-              </button>
-            </div>
-
-            <div className="p-10 lg:p-14 ml-8">
-              <ScriptViewer content={block.content} />
-            </div>
-          </div>
-        ))}
-
-        {isLoading && (
-          <div className="sticky bottom-6 left-0 right-0 flex justify-center z-50">
-            <div className="bg-white/90 backdrop-blur shadow-2xl rounded-2xl p-6 border border-slate-200 max-w-lg w-full flex flex-col gap-4 animate-in slide-in-from-bottom-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 border-4 border-slate-100 border-t-slate-900 rounded-full animate-spin"></div>
-                  <p className="font-black text-slate-900 text-sm">{loadingMsg}</p>
+      <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50/50">
+        <div className="max-w-6xl mx-auto py-16 px-8 space-y-24 pb-40">
+          {blocks.map(block => (
+            <div key={block.id} className="space-y-10 animate-fade-up">
+              <div className="bg-white rounded-[3rem] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] border border-slate-100 overflow-hidden">
+                <div className="p-10 lg:p-16">
+                  <ScriptViewer 
+                    blockId={block.id}
+                    content={block.content} 
+                    onVisualizeShot={(shot) => handleVisualizeShot(block.id!, shot)}
+                    onUpdateContent={(val) => handleUpdateScript(block.id, val)} 
+                    isGeneratingShot={isGeneratingShot}
+                    characterAssets={characterAssets}
+                    onOpenPreview={() => setPreviewBlockId(block.id!)}
+                  />
                 </div>
-                <span className="text-sm font-black text-slate-900">{Math.floor(progress)}%</span>
               </div>
-              <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-slate-900 transition-all duration-300 ease-out rounded-full" style={{ width: `${progress}%` }}></div>
-              </div>
+
+              {block.sceneImages && block.sceneImages.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 px-4">
+                  {block.sceneImages.map(img => (
+                    <div key={img.id} className="group relative aspect-video bg-slate-900 rounded-[2.5rem] overflow-hidden shadow-2xl border-8 border-white hover:border-blue-100 transition-all">
+                      <img src={img.imageUrl} alt="shot" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent p-6 flex flex-col justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                         <p className="text-white text-[11px] font-medium line-clamp-2">{img.shotDescription}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          ))}
+        </div>
       </div>
     </div>
   );
