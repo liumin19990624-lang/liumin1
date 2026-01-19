@@ -1,127 +1,173 @@
 
-import { SYSTEM_PROMPT_BASE, MALE_MODE_PROMPT, FEMALE_MODE_PROMPT, STYLE_PROMPTS } from "../constants";
-import { AudienceMode, ScriptBlock, ModelType, DirectorStyle } from "../types";
+import { GoogleGenAI, Modality } from "@google/genai";
+import { SYSTEM_PROMPT_BASE, MALE_MODE_PROMPT, FEMALE_MODE_PROMPT, STYLE_PROMPTS } from "../constants.tsx";
+import { AudienceMode, ScriptBlock, ModelType, DirectorStyle } from "../types.ts";
 
 export class GeminiService {
-  private async callBackend(payload: any) {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "AI 通信异常");
-    return data;
+  private ai: GoogleGenAI;
+
+  constructor() {
+    const apiKey = process.env.API_KEY;
+    this.ai = new GoogleGenAI({ apiKey: apiKey as string });
   }
 
-  async generateScriptBlock(
+  /**
+   * 极简清洗：只保留中文汉字、标点和特定格式。
+   * 彻底移除所有 Markdown (#, *, -, `, [ ], { }) 以及英文单词。
+   */
+  static cleanText(text: string | undefined): string {
+    if (!text) return "";
+    return text
+      .replace(/[#\*`\-_~>]/g, '') // 移除 Markdown 符号
+      .replace(/\[Shot:/gi, '（镜头：')
+      .replace(/\[.*?\]/g, '')      // 移除所有中括号标签
+      .replace(/\{.*?\}/g, '')      // 移除所有大括号标签
+      .replace(/[a-zA-Z]+/g, '')    // 移除所有残留英文
+      .replace(/\n\s*\n/g, '\n\n')  // 合并多余换行
+      .trim();
+  }
+
+  async *generateScriptBlockStream(
     mode: AudienceMode,
     sourceContent: string,
     previousBlocks: ScriptBlock[],
-    targetEpisodes: string,
-    model: ModelType = ModelType.PRO,
-    style: DirectorStyle = DirectorStyle.GHIBLI
+    blockIndex: number, 
+    model: ModelType = ModelType.FLASH,
+    style: DirectorStyle = DirectorStyle.UFOTABLE,
+    referenceContent: string = "",
+    outlineContent: string = ""
   ) {
-    const stylePrompt = STYLE_PROMPTS[style];
-    const lastBlock = previousBlocks[previousBlocks.length - 1];
-    const continuityContext = lastBlock 
-      ? `[叙事链快照]：已进行到第 ${lastBlock.episodes} 集。当前环境与角色状态：${lastBlock.continuityStatus || '连贯'}。`
-      : '起始章节，请设定宏大的开场氛围。';
+    const startEp = (blockIndex - 1) * 3 + 1;
+    const endEp = blockIndex * 3;
+    
+    // 扩大阅读范围，确保覆盖用户要求的 3000 字量级
+    const segmentSize = 10000;
+    const offset = (blockIndex - 1) * 8000; 
+    const truncatedSource = sourceContent.substring(offset, offset + segmentSize);
 
     const promptText = `
-任务：改编漫剧第 ${targetEpisodes} 集脚本。
-${continuityContext}
-${stylePrompt}
-[小说原著片段]：
-${sourceContent}
-${mode === AudienceMode.MALE ? MALE_MODE_PROMPT : FEMALE_MODE_PROMPT}
-请输出符合规范的脚本。要求包含 [Shot:ID]、[Duration:Xs] 和 [角色:对白] 标记。
-结尾必须包含一行 [ContinuityStatus: 总结本集结束时角色和环境的状态，用于下集参考]。`;
-
-    const response = await this.callBackend({
-      prompt: [{ parts: [{ text: promptText }] }],
-      systemInstruction: SYSTEM_PROMPT_BASE,
-      config: { model, temperature: 0.72 }
-    });
-
-    return response.text;
-  }
-
-  async generateShotImage(
-    shotDescription: string, 
-    mode: AudienceMode, 
-    characterContext?: string, 
-    style: DirectorStyle = DirectorStyle.SHINKAI,
-    mixers: string[] = []
-  ) {
-    const mixerPrompt = mixers.length > 0 ? `Enhance with visual mixers: ${mixers.join(', ')}.` : '';
-    const prompt = `2D Anime Cinematic Shot, ${style}. ${mixerPrompt} ${mode === AudienceMode.MALE ? 'High contrast, dynamic lighting' : 'Soft glow, aesthetic'}. Character: ${characterContext || ''}. Scene: ${shotDescription}`;
+    【目标】改编动漫脚本 第 ${startEp}-${endEp} 集
+    【受众】${mode === AudienceMode.MALE ? MALE_MODE_PROMPT : FEMALE_MODE_PROMPT} 
+    【风格】${STYLE_PROMPTS[style]}
     
-    const data = await this.callBackend({
-      prompt: [{ parts: [{ text: prompt }] }],
-      config: { model: 'gemini-2.5-flash-image', imageConfig: { aspectRatio: "16:9" } }
-    });
-    return data.image;
+    【全局剧本大纲】
+    ${outlineContent ? outlineContent.substring(0, 4000) : "请根据情节逻辑自然衔接"}
+
+    【参考格式】
+    ${referenceContent ? referenceContent.substring(0, 1500) : "标准动漫剧本格式"}
+
+    【前情提要】
+    ${previousBlocks.length > 0 ? previousBlocks[previousBlocks.length - 1].content.slice(-800) : '故事起始'}
+    
+    【原著核心内容】
+    ${truncatedSource}
+
+    【改编任务】
+    1. 将上述内容精练为 3 集剧本。
+    2. 禁止任何英文。禁止“呜呜、哈哈哈”拟声词。
+    3. 格式：
+    第 N 集
+    （镜头：画面描述）
+    角色名：台词内容
+    `;
+
+    try {
+      const response = await this.ai.models.generateContentStream({
+        model: 'gemini-3-flash-preview',
+        contents: [{ parts: [{ text: promptText }] }],
+        config: {
+          systemInstruction: SYSTEM_PROMPT_BASE,
+          temperature: 0.7,
+        },
+      });
+
+      for await (const chunk of response) {
+        if (chunk.text) yield chunk.text;
+      }
+    } catch (error: any) {
+      throw new Error(`剧本流生成异常: ${error.message}`);
+    }
   }
 
-  async generateCinematicVideo(imageUri: string, prompt: string, style: DirectorStyle) {
-    const base64Image = imageUri.split('base64,')[1];
-    const res = await fetch('/api/video', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        image: base64Image,
-        prompt: `High quality anime motion animation, ${style}. ${prompt}. 60fps feel, smooth parallax.`
-      })
+  async *generateFullOutlineStream(mode: AudienceMode, content: string, referenceStyle: string = "") {
+    const promptText = `
+    任务：阅读以下超长网文，撰写一份 2000-3000 字的【深度剧本改编大纲】。
+    
+    要求：
+    1. 必须包含：世界观基调、核心人物成长弧光、每 10 集一个的大钩子、全篇 100 集的爽点分布图。
+    2. 语言必须纯正中文，禁止英文，禁止符号。
+    3. 内容要极尽详细，涵盖主要矛盾冲突。
+    ${referenceStyle ? `4. 风格参考：请模仿该大纲的叙事力度：${referenceStyle.substring(0, 1000)}` : ""}
+
+    原著内容：
+    ${content.substring(0, 25000)}
+    `;
+
+    const response = await this.ai.models.generateContentStream({
+      model: 'gemini-3-pro-preview', // 大纲提取使用 Pro 模型以获得更高质量
+      contents: [{ parts: [{ text: promptText }] }],
+      config: {
+        systemInstruction: "你是一位资深文学策划，擅长将长篇小说结构化。你的输出必须是美观、纯净的中文长文，字数要充实，达到 2000 字以上。",
+      },
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
-    return data;
+
+    for await (const chunk of response) {
+      if (chunk.text) yield chunk.text;
+    }
   }
 
-  async pollVideoStatus(operationId: string) {
-    const res = await fetch(`/api/video?id=${operationId}`);
-    return await res.json();
+  async *extractCharactersStream(content: string) {
+    const promptText = `提取核心角色，要求详细。禁止英文。内容：${content.substring(0, 10000)}`;
+    const response = await this.ai.models.generateContentStream({
+      model: 'gemini-3-flash-preview',
+      contents: [{ parts: [{ text: promptText }] }],
+      config: {
+        systemInstruction: "你是一个资深动漫人设师。请输出：姓名、性格、外貌特征、关键记忆点。纯中文。",
+      },
+    });
+    for await (const chunk of response) {
+      if (chunk.text) yield chunk.text;
+    }
   }
 
-  async generateDialogueAudio(characterName: string, dialogueText: string, voiceId?: string) {
-    const res = await fetch('/api/tts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        prompt: [{ parts: [{ text: `(扮演${characterName}) ${dialogueText}` }] }], 
-        voiceName: voiceId || 'Kore' 
-      })
+  async generateShotImage(description: string, mode: AudienceMode, aspectRatio: string = "16:9", style: DirectorStyle = DirectorStyle.UFOTABLE): Promise<string> {
+    const prompt = `Anime 2D concept art, ${STYLE_PROMPTS[style]}, ${description}, professional lighting, ${mode === AudienceMode.MALE ? 'shonen style' : 'shoujo style'}`;
+    const response = await this.ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: [{ parts: [{ text: prompt }] }],
+      config: { imageConfig: { aspectRatio: aspectRatio as any } },
     });
-    return await res.json();
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
+    }
+    return "";
   }
 
-  async extractCharacters(content: string) {
-    const promptText = `请从以下文本中提取主要角色，输出格式为：角色名 - 视觉特征描述 - 性格核心。\n\n${content}`;
-    const response = await this.callBackend({
-      prompt: [{ parts: [{ text: promptText }] }],
-      config: { model: ModelType.FLASH }
+  async generateCharacterImage(description: string, mode: AudienceMode): Promise<string> {
+    const prompt = `Anime character sheet, full body, ${description}, flat colors, white background, high detail, ${mode === AudienceMode.MALE ? 'shonen' : 'shoujo'}`;
+    const response = await this.ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: [{ parts: [{ text: prompt }] }],
+      config: { imageConfig: { aspectRatio: "1:1" } },
     });
-    return response.text;
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
+    }
+    return "";
   }
 
-  // Fixed: Added referenceContent as an optional third argument to match the caller in OutlinePanel.tsx
-  async generateFullOutline(mode: AudienceMode, content: string, referenceContent?: string) {
-    const refPrompt = referenceContent ? `\n请参考以下风格源的叙事节奏与文风：\n${referenceContent}\n` : '';
-    const promptText = `请为以下内容撰写一份${mode}风格的 2000 字深度剧情大纲，突出叙事节奏和高潮转折点。${refPrompt}\n\n[目标小说文本]：\n${content}`;
-    const response = await this.callBackend({
-      prompt: [{ parts: [{ text: promptText }] }],
-      config: { model: ModelType.PRO }
+  async generateTTS(text: string, voiceName: string = 'Kore'): Promise<string> {
+    const response = await this.ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: { prebuiltVoiceConfig: { voiceName } },
+        },
+      },
     });
-    return response.text;
-  }
-
-  async generateCharacterImage(description: string, mode: AudienceMode) {
-    const prompt = `2D hand-drawn Anime Character Concept Art, ${mode}. Full body, high detail, plain background. Description: ${description}`;
-    const data = await this.callBackend({
-      prompt: [{ parts: [{ text: prompt }] }],
-      config: { model: 'gemini-2.5-flash-image', imageConfig: { aspectRatio: "1:1" } }
-    });
-    return data.image;
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    return base64Audio ? `data:audio/pcm;base64,${base64Audio}` : "";
   }
 }

@@ -1,81 +1,93 @@
 
-import React, { useState } from 'react';
-import { AppStage, KBFile } from './types';
-import { ICONS } from './constants';
-import KBManager from './components/KBManager';
-import Workspace from './components/Workspace';
+import React, { useState, useEffect } from 'react';
+import { AppStage, KBFile } from './types.ts';
+import { ICONS } from './constants.tsx';
+import KBManager from './components/KBManager.tsx';
+import Workspace from './components/Workspace.tsx';
 
 const App: React.FC = () => {
   const [stage, setStage] = useState<AppStage>(AppStage.KB_MANAGEMENT);
   const [files, setFiles] = useState<KBFile[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // 初始化加载本地缓存数据
+  useEffect(() => {
+    const savedFiles = localStorage.getItem('anime_engine_files_v3');
+    if (savedFiles) {
+      try {
+        setFiles(JSON.parse(savedFiles));
+      } catch (e) {
+        console.error("Failed to load saved files");
+      }
+    }
+    setIsLoading(false);
+  }, []);
+
+  // 监听文件变化并保存
+  useEffect(() => {
+    if (!isLoading) {
+      localStorage.setItem('anime_engine_files_v3', JSON.stringify(files));
+    }
+  }, [files, isLoading]);
   
   const handleFileUpload = (newFiles: KBFile[]) => {
-    setFiles(prev => [...prev, ...newFiles]);
+    setFiles(prev => [...newFiles, ...prev]);
   };
 
   const handleDeleteFile = (id: string) => {
     setFiles(prev => prev.filter(f => f.id !== id));
   };
 
-  const nextStage = () => {
-    if (files.length === 0) {
-      alert("请至少上传一份文件作为资料源");
-      return;
-    }
-    setStage(AppStage.WORKSPACE);
-  };
-
-  const prevStage = () => {
-    setStage(AppStage.KB_MANAGEMENT);
-  };
+  if (isLoading) {
+    return (
+      <div className="h-screen bg-[#0a0a0c] flex flex-col items-center justify-center">
+        <div className="w-16 h-16 border-2 border-white/5 border-t-blue-500 rounded-full animate-spin mb-4"></div>
+        <p className="text-white/40 text-[10px] font-black uppercase tracking-widest">Initialising Creative Engine...</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
-      {/* Dynamic Header */}
-      <header className="glass-effect h-16 px-8 flex items-center justify-between shadow-sm z-[100] border-b border-slate-200">
+    <div className="h-screen flex flex-col overflow-hidden bg-[#0a0a0c]">
+      <header className="h-16 px-8 flex items-center justify-between z-[100] border-b border-white/5 bg-black/40 backdrop-blur-xl">
         <div className="flex items-center gap-4">
-          <div className="bg-slate-900 p-2 rounded-xl text-white shadow-inner">
+          <div className="bg-blue-600 p-2 rounded-xl text-white shadow-lg">
             {ICONS.Library}
           </div>
           <div>
-            <h1 className="text-lg font-black text-slate-900 leading-tight tracking-tight">漫剧适配大师 <span className="text-blue-600">Pro</span></h1>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">AI Content Workstation v2.0</p>
+            <h1 className="text-lg font-black text-white leading-tight tracking-tight italic">ANIME <span className="text-blue-500 not-italic">ENGINE</span></h1>
+            <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Speed Optimized v3.0</p>
           </div>
         </div>
         
-        <div className="flex items-center gap-4">
-          {stage === AppStage.WORKSPACE && (
-            <button 
-              onClick={prevStage}
-              className="group flex items-center gap-2 text-slate-500 hover:text-slate-900 font-bold text-sm px-4 py-2 rounded-xl transition-all border border-slate-200 bg-white shadow-sm"
-            >
-              <div className="group-hover:-translate-x-1 transition-transform">
-                {ICONS.ArrowLeft}
-              </div>
-              返回知识库
-            </button>
-          )}
-
-          {stage === AppStage.KB_MANAGEMENT && files.length > 0 && (
-            <button 
-              onClick={nextStage}
-              className="flex items-center gap-2 bg-slate-900 hover:bg-black text-white px-6 py-2 rounded-xl font-bold text-sm transition-all shadow-lg active:scale-95"
-            >
-              进入工作台
-              {ICONS.ChevronRight}
-            </button>
-          )}
-          
-          <div className="w-px h-6 bg-slate-200 mx-2"></div>
-          
-          <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">
+        <div className="flex items-center gap-6">
+          <nav className="flex items-center gap-3">
+            {stage === AppStage.WORKSPACE ? (
+              <button 
+                onClick={() => setStage(AppStage.KB_MANAGEMENT)}
+                className="text-slate-400 hover:text-white font-bold text-xs px-4 py-2 border border-white/10 rounded-xl bg-white/5 transition-all flex items-center gap-2"
+              >
+                {ICONS.ArrowLeft} 资料库
+              </button>
+            ) : (
+              files.length > 0 && (
+                <button 
+                  onClick={() => setStage(AppStage.WORKSPACE)}
+                  className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl font-bold text-xs transition-all shadow-lg flex items-center gap-2"
+                >
+                  进入导演工作台 {ICONS.ChevronRight}
+                </button>
+              )
+            )}
+          </nav>
+          <div className="w-px h-6 bg-white/10"></div>
+          <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 rounded-full">
             <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">AI Core Ready</span>
+            <span className="text-[10px] font-black text-emerald-400 uppercase tracking-tighter">SDK DIRECT MODE</span>
           </div>
         </div>
       </header>
 
-      {/* Content Area - Full Height Scroll Control */}
       <main className="flex-1 overflow-hidden relative">
         {stage === AppStage.KB_MANAGEMENT ? (
           <KBManager 
@@ -84,7 +96,7 @@ const App: React.FC = () => {
             onDelete={handleDeleteFile} 
           />
         ) : (
-          <Workspace files={files} />
+          <Workspace files={files} onUpdateFiles={handleFileUpload} />
         )}
       </main>
     </div>

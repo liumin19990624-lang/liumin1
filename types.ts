@@ -19,8 +19,10 @@ export interface SceneImage {
   shotDescription: string;
   imageUrl: string;
   videoUrl?: string; 
+  videoOperationId?: string;
   duration: number; // 镜头时长（秒）
   isGeneratingVideo?: boolean;
+  videoError?: string;
 }
 
 export interface ScriptBlock {
@@ -31,7 +33,7 @@ export interface ScriptBlock {
   sceneImages?: SceneImage[];
   directorNotes?: string;
   style?: DirectorStyle;
-  styleMixer?: string[]; // 叠加风格滤گیر
+  styleMixer?: string[]; // 叠加风格滤镜
   continuityStatus?: string; // 叙事状态链
   created_at?: string;
 }
@@ -55,6 +57,7 @@ export interface CharacterAsset {
   description: string;
   image_url: string;
   voice_id?: string;
+  is_playing_voice?: boolean;
 }
 
 export enum AppStage {

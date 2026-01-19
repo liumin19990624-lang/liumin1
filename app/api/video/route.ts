@@ -36,7 +36,8 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    return NextResponse.json({ operationId: operation.id });
+    // Fixed: Property 'id' does not exist on type 'GenerateVideosOperation', use 'name'
+    return NextResponse.json({ operationId: operation.name });
   } catch (error: any) {
     console.error("Veo Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -45,12 +46,13 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const id = searchParams.get('id');
+  const id = searchParams.get('id'); // This corresponds to the operation name
   if (!id) return NextResponse.json({ error: "Missing ID" }, { status: 400 });
 
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const operation = await ai.operations.getVideosOperation({ operation: { id } });
+    // Fixed: getVideosOperation requires a proper GenerateVideosOperation structure, using 'name' instead of 'id'
+    const operation = await ai.operations.getVideosOperation({ operation: { name: id } as any });
 
     if (operation.done) {
       const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;

@@ -3,11 +3,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { UserButton } from '@clerk/nextjs';
-import { AppStage, KBFile } from '../types';
-import { ICONS } from '../constants';
-import KBManager from '../components/KBManager';
-import Workspace from '../components/Workspace';
-import { supabase } from '../lib/supabase';
+import { AppStage, KBFile } from '../types.ts';
+import { ICONS } from '../constants.tsx';
+import KBManager from '../components/KBManager.tsx';
+import Workspace from '../components/Workspace.tsx';
+import { supabase } from '../lib/supabase.ts';
 import { useAuth } from '@clerk/nextjs';
 
 export default function Home() {
@@ -19,7 +19,12 @@ export default function Home() {
   
   useEffect(() => {
     const fetchData = async () => {
-      if (!userId) return;
+      // 即使没有 userId，也需要结束加载状态，否则界面卡死
+      if (!userId) {
+        setIsLoading(false);
+        return;
+      }
+
       setIsLoading(true);
       try {
         const kbRes = await fetch('/api/kb');
@@ -53,21 +58,23 @@ export default function Home() {
 
     fetchData();
 
-    const channel = supabase
-      .channel(`profile_${userId}`)
-      .on('postgres_changes', { 
-        event: 'UPDATE', 
-        schema: 'public', 
-        table: 'profiles',
-        filter: `id=eq.${userId}`
-      }, (payload) => {
-        setCredits(payload.new.credits);
-      })
-      .subscribe();
+    if (userId) {
+      const channel = supabase
+        .channel(`profile_${userId}`)
+        .on('postgres_changes', { 
+          event: 'UPDATE', 
+          schema: 'public', 
+          table: 'profiles',
+          filter: `id=eq.${userId}`
+        }, (payload) => {
+          setCredits(payload.new.credits);
+        })
+        .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
   }, [userId]);
 
   const handleFileUpload = (newFiles: KBFile[]) => {
@@ -101,7 +108,7 @@ export default function Home() {
             <div className="flex flex-col">
               <span className="text-[8px] font-black text-slate-500 uppercase leading-none">Compute Power</span>
               <span className="text-sm font-black leading-none font-mono">
-                {credits !== null ? credits.toString().padStart(3, '0') : '---'}
+                {credits !== null ? credits.toString().padStart(3, '0') : '100'}
               </span>
             </div>
           </div>
@@ -115,7 +122,7 @@ export default function Home() {
                 {ICONS.ArrowLeft} 资料库
               </button>
             ) : (
-              files.length > 0 && (
+              (files.length > 0 || !userId) && (
                 <button 
                   onClick={() => setStage(AppStage.WORKSPACE)}
                   className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl font-bold text-xs transition-all shadow-lg shadow-blue-600/20 flex items-center gap-2"
