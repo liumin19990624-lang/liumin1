@@ -1,85 +1,73 @@
-
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from "@google/genai";
 import { auth } from "@clerk/nextjs/server";
+
+// 你提供的 API 地址和密钥
+const API_BASE_URL = 'https://www.dmxapi.cn';
+const API_KEY = 'sk-56iBqzyCSBRB17iQSW2MILO0d1P2UgC8miT6BbvoEvPYI5Nw';
 
 export async function POST(req: NextRequest) {
   const { userId } = auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   try {
     const { prompt, config, systemInstruction, stream: shouldStream, model: requestedModel } = await req.json();
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    // Dynamically use the requested model or default to flash
     const modelName = requestedModel || 'gemini-3-flash-preview';
 
-    // Handle Image Generation Models (Nano Banana series)
-    if (modelName === 'gemini-2.5-flash-image' || modelName === 'gemini-3-pro-image-preview') {
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: prompt,
-        config: { ...config, systemInstruction },
-      });
-      
-      let base64Image = "";
-      if (response.candidates?.[0]?.content?.parts) {
-        for (const part of response.candidates[0].content.parts) {
-          // Find the image part in the response parts
-          if (part.inlineData) {
-            base64Image = part.inlineData.data;
-            break;
-          }
-        }
-      }
-      return NextResponse.json({ image: base64Image ? `data:image/png;base64,${base64Image}` : "" });
+    // 构造请求体
+    const requestBody = {
+      model: modelName,
+      messages: [
+        { role: 'system', content: systemInstruction },
+        { role: 'user', content: prompt }
+      ],
+      stream: shouldStream,
+      ...config
+    };
+
+    // 调用你的 API
+    const response = await fetch(API_BASE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_KEY}`
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error?.message || `API 请求失败，状态码: ${response.status}`);
     }
 
+    // 处理流式响应
     if (shouldStream) {
-      const response = await ai.models.generateContentStream({
-        model: modelName,
-        contents: prompt,
-        config: {
-          ...config,
-          systemInstruction,
-        },
+      return new Response(response.body, {
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
       });
-
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        async start(controller) {
-          try {
-            for await (const chunk of response) {
-              // Access .text property directly
-              const text = chunk.text;
-              if (text) controller.enqueue(encoder.encode(text));
-            }
-          } catch (e: any) {
-            console.error("Stream generation internal error:", e);
-          } finally {
-            controller.close();
-          }
-        },
-      });
-
-      return new Response(stream, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
-    } else {
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: prompt,
-        config: { 
-          ...config, 
-          systemInstruction, 
-        },
-      });
-      return NextResponse.json({ text: response.text });
+    } 
+    // 处理非流式响应
+    else {
+      const data = await response.json();
+      // 兼容文本和图片生成的返回格式
+      if (modelName.includes('image')) {
+        return NextResponse.json({ 
+          image: data.image || `data:image/png;base64,${data.base64}` 
+        });
+      } else {
+        return NextResponse.json({ 
+          text: data.choices?.[0]?.message?.content || data.text 
+        });
+      }
     }
+
   } catch (error: any) {
-    console.error("Chat API Error:", error);
-    // Return a clean JSON error response that matches the user's reported format
-    return NextResponse.json({ 
+    console.error("API 调用错误:", error);
+    return NextResponse.json({
       error: {
         code: 500,
-        message: error.message || "Gemini API failure",
+        message: error.message || "API 请求失败",
         status: "INTERNAL"
       }
     }, { status: 500 });
