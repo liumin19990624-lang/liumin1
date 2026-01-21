@@ -1,4 +1,4 @@
-# Logs
+# ============== 日志文件 ==============
 logs
 *.log
 npm-debug.log*
@@ -6,19 +6,108 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+.pnpm-debug.log*
 
+# ============== 依赖与构建产物 ==============
+# 依赖目录
 node_modules
+.pnp
+.pnp.js
+
+# 构建输出目录（适配 Vite、Webpack、Next.js 等）
 dist
 dist-ssr
+build
+out
+.next
+.vercel
+.nuxt
+coverage
+.esbuild
+.turbo
+
+# 临时文件
+tmp
+temp
 *.local
 
-# Editor directories and files
+# ============== 编辑器配置 ==============
+# VS Code
 .vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.vscode/*.code-workspace
+.vscode/history
+.vscode/cache
+
+# IntelliJ IDEA（WebStorm、IDEA 等）
 .idea
+*.iws
+*.iml
+*.ipr
+.out
 .DS_Store
+
+# Visual Studio
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+*.sdf
+*.opensdf
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# Sublime Text
+*.sublime-*
+Packages/User/Package Control.cache/
+
+# Vim
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ============== 环境变量与敏感文件 ==============
+# 环境变量文件（你的项目用到的 .env.local 等）
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+
+# 敏感配置文件
+*.pem
+*.key
+*.crt
+*.pfx
+.env.secret
+.env.*.secret
+
+# ============== 语言/框架特定忽略 ==============
+# TypeScript
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+tsconfig.json.tsbuildinfo
+
+# JavaScript
+*.js.map
+*.jsbundle
+*.jsc
+
+# CSS/SCSS
+*.css.map
+*.scssc
+.sass-cache
+
+# 其他
+*.bak
+*.tmp
+*.orig
+*.rej
+*~
