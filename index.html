@@ -1,86 +1,153 @@
-
 <!DOCTYPE html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>漫剧剧本智能适配大师 - 专业级网文改编平台</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>ANIME ENGINE v3.8 - 漫剧剧本智能创作平台</title>
+    <!-- 搜索引擎优化 -->
+    <meta name="description" content="ANIME ENGINE - 专业级漫剧剧本创作平台，支持小说改编、大纲生成、分镜设计、Word导出，AI驱动的工业化漫剧生产工具" />
+    <meta name="keywords" content="漫剧创作,剧本生成,小说改编,分镜设计,AI剧本,Word导出,动漫制作" />
+    <meta name="author" content="ANIME ENGINE Team" />
+    <!-- 社交媒体预览 -->
+    <meta property="og:title" content="ANIME ENGINE v3.8 - 漫剧剧本智能创作平台" />
+    <meta property="og:description" content="AI驱动的工业化漫剧生产工具，一站式完成小说改编、大纲生成、分镜设计、Word导出" />
+    <meta property="og:type" content="website" />
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 预加载关键资源 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'" />
+    <!-- 备用字体加载 -->
+    <noscript>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" />
+    </noscript>
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap');
-      
       :root {
-        --brand-primary: #1e293b;
-        --brand-accent: #3b82f6;
+        --brand-primary: #0a0a0c; /* 主背景色（与App组件一致） */
+        --brand-accent: #3b82f6; /* 品牌蓝（按钮、强调色） */
+        --brand-red: #dc2626; /* 场景标题红 */
+        --brand-emerald: #10b981; /* 状态绿 */
+        --text-primary: #f8fafc; /* 主文本色 */
+        --text-secondary: #94a3b8; /* 次要文本色 */
+        --border-color: rgba(255, 255, 255, 0.1); /* 边框色 */
       }
 
       body {
         font-family: 'Noto Sans SC', sans-serif;
-        background-color: #f8fafc;
+        background-color: var(--brand-primary);
         background-image: 
-          radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.05) 0px, transparent 50%),
-          radial-gradient(at 50% 0%, rgba(99, 102, 241, 0.05) 0px, transparent 50%),
-          radial-gradient(at 100% 0%, rgba(236, 72, 153, 0.05) 0px, transparent 50%);
-        color: #1e293b;
+          radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.08) 0px, transparent 50%),
+          radial-gradient(at 50% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
+          radial-gradient(at 100% 0%, rgba(236, 72, 153, 0.08) 0px, transparent 50%);
+        color: var(--text-primary);
+        min-height: 100vh;
       }
 
+      /* 玻璃态效果（适配深色背景） */
       .glass-effect {
-        background: rgba(255, 255, 255, 0.85);
+        background: rgba(15, 15, 17, 0.85);
         backdrop-filter: blur(16px) saturate(180%);
-        border: 1px solid rgba(255, 255, 255, 0.4);
+        border: 1px solid var(--border-color);
       }
 
+      /* 卡片阴影（适配深色背景） */
       .card-shadow {
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.15);
       }
 
+      /* 自定义滚动条（适配深色背景） */
       .custom-scrollbar::-webkit-scrollbar {
         width: 6px;
+        height: 6px;
       }
       .custom-scrollbar::-webkit-scrollbar-track {
         background: transparent;
       }
       .custom-scrollbar::-webkit-scrollbar-thumb {
-        background: #e2e8f0;
+        background: rgba(255, 255, 255, 0.15);
         border-radius: 10px;
       }
       .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-        background: #cbd5e1;
+        background: rgba(255, 255, 255, 0.3);
       }
 
+      /* 渐入动画（优化时间曲线） */
       @keyframes fade-up {
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
       }
       .animate-fade-up {
-        animation: fade-up 0.4s ease-out forwards;
+        animation: fade-up 0.4s cubic-bezier(0.25, 1, 0.5, 1) forwards;
       }
 
+      /* 延迟动画（用于列表项依次出现） */
+      .animate-fade-up-delay-100 { animation-delay: 0.1s; }
+      .animate-fade-up-delay-200 { animation-delay: 0.2s; }
+      .animate-fade-up-delay-300 { animation-delay: 0.3s; }
+
+      /* 激活状态样式（侧边栏/导航） */
       .sidebar-item-active {
-        background: var(--brand-primary);
+        background: var(--brand-accent);
         color: white;
-        box-shadow: 0 10px 15px -3px rgba(30, 41, 59, 0.25);
+        box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3);
+      }
+
+      /* 加载动画（备用） */
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      .animate-spin {
+        animation: spin 1s linear infinite;
+      }
+
+      /* 防止文本选中（按钮/图标） */
+      .no-select {
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
+      /* 响应式调整 */
+      @media (max-width: 768px) {
+        .glass-effect {
+          background: rgba(15, 15, 17, 0.95);
+        }
       }
     </style>
+    <!-- ESM 依赖映射（优化版本锁定与路径） -->
     <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
-    "@google/genai": "https://esm.sh/@google/genai@^1.37.0",
-    "docx": "https://esm.sh/docx@^9.5.1",
-    "mammoth": "https://esm.sh/mammoth@^1.8.0",
-    "next/": "https://esm.sh/next@^16.1.2/",
-    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.90.1",
-    "@clerk/nextjs/": "https://esm.sh/@clerk/nextjs@^6.36.7/",
-    "@clerk/nextjs": "https://esm.sh/@clerk/nextjs@^6.36.7"
+    "react": "https://esm.sh/react@19.2.3",
+    "react-dom/client": "https://esm.sh/react-dom@19.2.3/client",
+    "react-dom": "https://esm.sh/react-dom@19.2.3",
+    "lucide-react": "https://esm.sh/lucide-react@0.562.0",
+    "@google/genai": "https://esm.sh/@google/genai@1.37.0",
+    "docx": "https://esm.sh/docx@9.5.1",
+    "mammoth": "https://esm.sh/mammoth@1.8.0",
+    "next": "https://esm.sh/next@16.1.2",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.90.1",
+    "@clerk/nextjs": "https://esm.sh/@clerk/nextjs@6.36.7"
   }
 }
-</script>
+    </script>
+    <!-- 预加载根组件（提升启动速度） -->
+    <link rel="modulepreload" href="/src/main.tsx" />
   </head>
-  <body>
-    <div id="root"></div>
+  <body class="antialiased">
+    <!-- 根容器 -->
+    <div id="root" class="h-screen overflow-hidden"></div>
+
+    <!-- 加载失败备用提示 -->
+    <noscript>
+      <div class="h-screen flex flex-col items-center justify-center p-8 text-center">
+        <h1 class="text-2xl font-bold text-white mb-4">ANIME ENGINE</h1>
+        <p class="text-slate-400 mb-6">您的浏览器不支持 JavaScript，请启用后重试</p>
+        <button class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl font-bold text-sm">
+          了解如何启用 JavaScript
+        </button>
+      </div>
+    </noscript>
   </body>
 </html>
