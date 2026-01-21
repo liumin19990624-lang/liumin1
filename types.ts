@@ -25,6 +25,15 @@ export interface SceneImage {
   videoError?: string;
 }
 
+export enum TropeType {
+  FACE_SLAP = '打脸反杀',
+  INVINCIBLE = '无敌碾压',
+  REGRET = '追妻/前任火葬场',
+  SYSTEM = '系统觉醒',
+  HIDDEN_EXPERT = '扮猪吃虎',
+  GENIUS = '天才回归',
+}
+
 export interface ScriptBlock {
   id: string;
   sourceId: string;
@@ -33,9 +42,10 @@ export interface ScriptBlock {
   sceneImages?: SceneImage[];
   directorNotes?: string;
   style?: DirectorStyle;
-  styleMixer?: string[]; // 叠加风格滤镜
-  continuityStatus?: string; // 叙事状态链
+  trope?: TropeType;
+  continuityStatus?: string; 
   created_at?: string;
+  wordCount?: number;
 }
 
 export enum DirectorStyle {
@@ -70,6 +80,7 @@ export enum WorkspaceTab {
   OUTLINE = 'OUTLINE',
   VISUALS = 'VISUALS',
   SHOTS = 'SHOTS',
+  MERGE = 'MERGE',
 }
 
 export enum AudienceMode {

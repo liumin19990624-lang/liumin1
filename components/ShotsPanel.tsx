@@ -1,13 +1,26 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { ICONS } from '../constants.tsx';
-import { ScriptBlock, KBFile, Category } from '../types.ts';
+import { ScriptBlock, KBFile, Category, ModelType } from '../types.ts';
 import { GeminiService } from '../services/geminiService.ts';
-import { DocGenerator } from '../services/docGenerator.ts';
 
-const ShotsPanel: React.FC<{ sourceBlocks: any[], files: KBFile[], onSaveToKB: (f: KBFile) => void }> = ({ sourceBlocks, files, onSaveToKB }) => {
+interface ShotEntry {
+  id: string;
+  duration: string;
+  language: string;
+  visual: string;
+  dialogue: string;
+  prompt: string;
+}
+
+interface ShotsPanelProps {
+  sourceBlocks: any[];
+  files: KBFile[];
+  onSaveToKB: (f: KBFile) => void;
+}
+
+const ShotsPanel: React.FC<ShotsPanelProps> = ({ sourceBlocks, files, onSaveToKB }) => {
   const [selectedBlockId, setSelectedBlockId] = useState<string>('');
-  const [refTemplateId, setRefTemplateId] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamingText, setStreamingText] = useState('');
   const [shotList, setShotList] = useState<string>('');
@@ -17,9 +30,10 @@ const ShotsPanel: React.FC<{ sourceBlocks: any[], files: KBFile[], onSaveToKB: (
 
   const handleGenerateShots = async () => {
     const block = sourceBlocks.find(b => b.id === selectedBlockId);
-    const refFile = files.find(f => f.id === refTemplateId);
-    if (!block) return;
-
+    if (!block) {
+      alert("请先选择一个剧本集数单元。");
+      return;
+    }
     setIsGenerating(true);
     setStreamingText('');
     setShotList('');
@@ -27,172 +41,205 @@ const ShotsPanel: React.FC<{ sourceBlocks: any[], files: KBFile[], onSaveToKB: (
 
     let full = '';
     try {
-      const stream = gemini.generateTechnicalShotListStream(block.content, refFile?.content || '');
+      const stream = gemini.generateTechnicalShotListStream(block.content);
       for await (const chunk of stream) {
         full += chunk;
         setStreamingText(full);
       }
       setShotList(full);
-      setStreamingText('');
     } catch (e) {
-      alert("分镜解析失败，请检查网络");
+      console.error(e);
+      alert("分镜生成中断，请重试");
     } finally {
       setIsGenerating(false);
     }
   };
 
+  const parsedShots = useMemo((): ShotEntry[] => {
+    const content = streamingText || shotList;
+    if (!content) return [];
+    
+    return content.split('\n')
+      .map(line => line.trim())
+      .filter(line => line.includes('|') && !line.includes('镜号') && !line.includes('---'))
+      .map(line => {
+        const parts = line.split('|').map(s => s.trim());
+        return { 
+          id: parts[0] || '?', 
+          duration: parts[1] || '3s', 
+          language: parts[2] || '常规镜头', 
+          visual: parts[3] || '描述缺失', 
+          dialogue: parts[4] || '（无对白）',
+          prompt: parts[5] || '' 
+        };
+      });
+  }, [streamingText, shotList]);
+
+  const totalDurationSeconds = useMemo(() => {
+    return parsedShots.reduce((acc, shot) => {
+      const seconds = parseInt(shot.duration.replace(/[^0-9]/g, '')) || 0;
+      return acc + seconds;
+    }, 0);
+  }, [parsedShots]);
+
+  const durationStatus = useMemo(() => {
+    const mins = Math.floor(totalDurationSeconds / 60);
+    const secs = totalDurationSeconds % 60;
+    const isOk = totalDurationSeconds >= 120; // 核心要求：多余 2 分钟
+    return {
+      text: `${mins}分${secs}秒`,
+      isOk,
+      percent: Math.min(100, (totalDurationSeconds / 180) * 100)
+    };
+  }, [totalDurationSeconds]);
+
   const handleSaveToKB = () => {
-    if (!shotList) return;
+    const finalContent = shotList || streamingText;
+    if (!finalContent) return;
+    
     const block = sourceBlocks.find(b => b.id === selectedBlockId);
     const newFile: KBFile = {
       id: Math.random().toString(36).substr(2, 9),
-      name: `[Vidu分镜表] ${block?.episodes || '未命名单元'}`,
-      category: Category.PLOT,
-      content: shotList,
+      name: `[分镜全案] ${block?.episodes || '未命名'} - 时长${durationStatus.text}`,
+      category: Category.REFERENCE,
+      content: finalContent,
       uploadDate: new Date().toISOString()
     };
     onSaveToKB(newFile);
     setSaveStatus(true);
   };
 
-  const parsedShots = useMemo(() => {
-    const lines = (streamingText || shotList).split('\n').filter(l => l.includes('|'));
-    return lines.map(line => {
-      const parts = line.split('|').map(p => p.trim());
-      // 镜号 | 时长 | 视听语言 | 画面描述 | 原著台词 | Vidu 一致性提示词
-      return {
-        id: parts[0] || '??',
-        duration: parts[1] || '---',
-        technical: parts[2] || '---',
-        visual: parts[3] || '---',
-        audio: parts[4] || '---',
-        viduPrompt: parts[5] || '---'
-      };
-    });
-  }, [streamingText, shotList]);
-
   return (
     <div className="flex-1 flex flex-col bg-[#050508] overflow-hidden">
-      <div className="h-24 px-10 border-b border-white/5 flex items-center justify-between bg-black/40 backdrop-blur-xl shrink-0">
-        <div className="flex items-center gap-4">
+      {/* 顶部控制台 */}
+      <div className="h-28 px-10 border-b border-white/5 flex items-center justify-between bg-black/40 backdrop-blur-xl shrink-0">
+        <div className="flex items-center gap-8">
           <div className="flex flex-col">
-            <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Storyboarding Engine</span>
-            <h2 className="text-xl font-black text-white italic tracking-tighter">分镜脚本 (Vidu 优化版)</h2>
+            <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Advanced Storyboarding</span>
+            <h2 className="text-xl font-black text-white italic tracking-tighter">分镜脚本管理中心</h2>
           </div>
-          <div className="h-10 w-px bg-white/10 mx-2"></div>
-          <div className="flex gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-[8px] font-black text-slate-500 uppercase ml-2 tracking-tighter">1. 选择剧本单元</label>
-              <select 
-                value={selectedBlockId} 
-                onChange={e => {setSelectedBlockId(e.target.value); setShotList('');}}
-                className="bg-slate-900 border border-white/10 text-white text-[10px] font-bold rounded-xl px-3 py-2 outline-none focus:border-blue-500 min-w-[180px]"
-              >
-                <option value="">待选单元...</option>
-                {sourceBlocks.map(b => <option key={b.id} value={b.id}>{b.episodes}</option>)}
-              </select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[8px] font-black text-slate-500 uppercase ml-2 tracking-tighter">2. 参考分镜模板</label>
-              <select 
-                value={refTemplateId} 
-                onChange={e => setRefTemplateId(e.target.value)}
-                className="bg-slate-900 border border-white/10 text-white text-[10px] font-bold rounded-xl px-3 py-2 outline-none focus:border-blue-500 min-w-[180px]"
-              >
-                <option value="">默认 Vidu 工业风格...</option>
-                {files.filter(f => f.category === Category.REFERENCE).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-              </select>
-            </div>
-          </div>
-        </div>
 
-        <div className="flex gap-3">
-           <button 
-             disabled={!selectedBlockId || isGenerating} 
-             onClick={handleGenerateShots}
-             className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 text-white px-6 py-2.5 rounded-2xl font-black text-[10px] uppercase transition-all flex items-center gap-2 shadow-lg shadow-blue-900/20"
-           >
-             {isGenerating ? <div className="animate-spin text-white">⟳</div> : (shotList ? ICONS.Refresh : ICONS.Play)}
-             {isGenerating ? 'Vidu 指令生成中...' : (shotList ? '不满意？重新生成' : '启动分镜解析')}
-           </button>
-           {shotList && (
-             <>
-               <button 
-                 onClick={handleSaveToKB}
-                 disabled={saveStatus}
-                 className={`px-6 py-2.5 rounded-2xl font-black text-[10px] uppercase border transition-all ${saveStatus ? 'bg-emerald-500 border-emerald-400 text-white' : 'bg-white/5 border-white/10 text-white hover:bg-white/10'}`}
-               >
-                 {saveStatus ? '✓ 已保存至资料库' : '保存分镜全案'}
-               </button>
-               <button 
-                 onClick={() => DocGenerator.downloadBlob(new Blob([shotList]), "Vidu分镜表.txt")}
-                 className="bg-white/5 hover:bg-white/10 text-white border border-white/10 px-6 py-2.5 rounded-2xl font-black text-[10px] uppercase"
-               >
-                 下载文本
-               </button>
-             </>
-           )}
+          {parsedShots.length > 0 && (
+            <div className="flex items-center gap-6 bg-white/[0.03] border border-white/10 px-8 py-2.5 rounded-3xl shadow-2xl">
+              <div className="flex flex-col">
+                <span className="text-[8px] font-black text-slate-500 uppercase">当前集数预计时长</span>
+                <span className={`text-lg font-black italic tabular-nums leading-none mt-1 ${durationStatus.isOk ? 'text-emerald-400' : 'text-amber-500'}`}>
+                  {durationStatus.text}
+                </span>
+              </div>
+              <div className="w-32 h-2 bg-white/5 rounded-full overflow-hidden relative">
+                <div 
+                  className={`h-full transition-all duration-1000 ${durationStatus.isOk ? 'bg-emerald-500' : 'bg-amber-500'}`} 
+                  style={{ width: `${durationStatus.percent}%` }}
+                />
+              </div>
+              <div className="flex flex-col items-end">
+                 <span className={`text-[9px] font-black uppercase ${durationStatus.isOk ? 'text-emerald-500' : 'text-amber-500'}`}>
+                   {durationStatus.isOk ? '时长已达标 (>2min)' : '时长未达标'}
+                 </span>
+                 <span className="text-[8px] font-bold text-slate-600">PRODUCTION READY</span>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        <div className="flex items-center gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[9px] font-black text-slate-500 uppercase ml-2">选择剧本来源</label>
+            <select 
+              value={selectedBlockId} 
+              onChange={e => setSelectedBlockId(e.target.value)} 
+              className="bg-slate-900 border border-white/10 text-white text-xs font-bold rounded-2xl px-5 py-3 outline-none min-w-[220px] focus:border-blue-500"
+            >
+              <option value="">{sourceBlocks.length === 0 ? "暂无可用剧本" : "选择剧本单元..."}</option>
+              {sourceBlocks.map(b => <option key={b.id} value={b.id}>{b.episodes} ({b.content.length}字)</option>)}
+            </select>
+          </div>
+
+          <div className="flex items-end h-full pb-1 gap-3">
+            <button 
+              disabled={!selectedBlockId || isGenerating} 
+              onClick={handleGenerateShots} 
+              className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 text-white px-8 py-3.5 rounded-2xl font-black text-xs uppercase shadow-xl transition-all flex items-center gap-3"
+            >
+              {isGenerating ? <div className="animate-spin">{ICONS.Refresh}</div> : ICONS.Zap}
+              {isGenerating ? "正在拆解..." : (shotList ? "重新生成分镜" : "生成精细分镜")}
+            </button>
+            
+            {(shotList || streamingText) && (
+              <button 
+                onClick={handleSaveToKB} 
+                disabled={isGenerating || saveStatus}
+                className={`px-6 py-3.5 rounded-2xl text-xs font-black uppercase transition-all flex items-center gap-3 ${
+                  saveStatus 
+                  ? 'bg-emerald-600 text-white' 
+                  : 'bg-white/5 text-white hover:bg-white/10 border border-white/10'
+                }`}
+              >
+                {saveStatus ? "✓ 已存入库" : ICONS.Download}
+                {saveStatus ? "" : "保存存库"}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar p-8">
-        {!shotList && !streamingText ? (
-          <div className="h-full flex flex-col items-center justify-center opacity-20 pointer-events-none">
-             <div className="w-20 h-20 bg-white/10 rounded-3xl flex items-center justify-center mb-6">
-                <div className="scale-[2] text-white">📋</div>
-             </div>
-             <p className="text-white font-black text-sm uppercase tracking-widest">请选择剧本单元以启动 Vidu 优化分镜拆解</p>
+      {/* 沉浸式表格内容 */}
+      <div className="flex-1 overflow-auto custom-scrollbar p-8">
+        {!parsedShots.length && !isGenerating && (
+          <div className="h-full flex flex-col items-center justify-center opacity-30">
+            <div className="scale-[3] mb-8">{ICONS.Library}</div>
+            <p className="text-sm font-black uppercase tracking-[0.3em]">等待剧本导入并开始拆解</p>
           </div>
-        ) : (
-          <div className="min-w-[1200px] animate-fade-up">
-             <div className="bg-white/[0.02] border border-white/10 rounded-[2rem] overflow-hidden shadow-2xl">
-                <table className="w-full text-left border-collapse table-fixed">
-                   <thead>
-                      <tr className="bg-white/[0.03] border-b border-white/5">
-                         <th className="px-6 py-5 text-[9px] font-black text-slate-500 uppercase tracking-widest w-16">镜号</th>
-                         <th className="px-6 py-5 text-[9px] font-black text-slate-500 uppercase tracking-widest w-20">时长</th>
-                         <th className="px-6 py-5 text-[9px] font-black text-slate-500 uppercase tracking-widest w-40">视听语言</th>
-                         <th className="px-6 py-5 text-[9px] font-black text-slate-500 uppercase tracking-widest w-64">画面描述</th>
-                         <th className="px-6 py-5 text-[9px] font-black text-slate-500 uppercase tracking-widest w-48">原著台词</th>
-                         <th className="px-6 py-5 text-[9px] font-black text-blue-500 uppercase tracking-widest">Vidu 一致性提示词</th>
-                      </tr>
-                   </thead>
-                   <tbody className="divide-y divide-white/5">
-                      {parsedShots.map((shot, idx) => (
-                        <tr key={idx} className="group hover:bg-white/[0.01] transition-colors align-top">
-                           <td className="px-6 py-5">
-                              <span className="text-slate-500 font-mono text-[10px] font-black">{shot.id}</span>
-                           </td>
-                           <td className="px-6 py-5">
-                              <span className="text-emerald-500 font-mono text-[10px] font-bold italic">{shot.duration}</span>
-                           </td>
-                           <td className="px-6 py-5">
-                              <span className="text-blue-400 text-[10px] font-bold leading-tight block">{shot.technical}</span>
-                           </td>
-                           <td className="px-6 py-5">
-                              <p className="text-white/80 text-[11px] leading-relaxed font-light">{shot.visual}</p>
-                           </td>
-                           <td className="px-6 py-5">
-                              <p className="text-slate-500 text-[10px] leading-relaxed italic line-clamp-4">{shot.audio}</p>
-                           </td>
-                           <td className="px-6 py-5">
-                              <div className="p-3 bg-blue-900/10 border border-blue-500/20 rounded-xl">
-                                <code className="text-blue-300 text-[10px] leading-relaxed break-words font-mono block">
-                                  {shot.viduPrompt}
-                                </code>
-                              </div>
-                           </td>
-                        </tr>
-                      ))}
-                   </tbody>
-                </table>
-             </div>
-             {streamingText && (
-               <div className="mt-8 flex items-center justify-center gap-4 text-blue-500 animate-pulse">
-                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
-                  <span className="text-[9px] font-black uppercase tracking-widest">正在进行深度视听解构与 Vidu 提示词工程演练...</span>
-               </div>
-             )}
+        )}
+
+        {parsedShots.length > 0 && (
+          <div className="min-w-[1700px] animate-fade-up">
+            <table className="w-full text-left border-separate border-spacing-0 rounded-[3rem] overflow-hidden bg-white/[0.01] border border-white/5 shadow-2xl">
+              <thead>
+                <tr className="bg-white/[0.04]">
+                  <th className="px-8 py-7 text-[10px] font-black text-slate-500 uppercase border-b border-white/5 w-24">镜号</th>
+                  <th className="px-8 py-7 text-[10px] font-black text-emerald-500 uppercase border-b border-white/5 w-28">时长</th>
+                  <th className="px-8 py-7 text-[10px] font-black text-blue-500 uppercase border-b border-white/5 w-56">视听语言</th>
+                  <th className="px-8 py-7 text-[10px] font-black text-slate-100 uppercase border-b border-white/5 w-[500px]">画面内容描述</th>
+                  <th className="px-8 py-7 text-[10px] font-black text-violet-400 uppercase border-b border-white/5 w-[350px]">原著台词</th>
+                  <th className="px-8 py-7 text-[10px] font-black text-amber-500 uppercase border-b border-white/5">Vidu 提示词</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {parsedShots.map((s, idx) => (
+                  <tr key={idx} className="hover:bg-white/[0.03] transition-all group">
+                    <td className="px-8 py-8 font-mono text-[11px] text-slate-500">{s.id}</td>
+                    <td className="px-8 py-8 font-mono text-xs text-emerald-400 font-black italic">{s.duration}</td>
+                    <td className="px-8 py-8">
+                       <span className="text-blue-300 text-[10px] font-black uppercase tracking-wider bg-blue-500/10 px-3 py-1.5 rounded-lg">
+                         {s.language}
+                       </span>
+                    </td>
+                    <td className="px-8 py-8 text-white/90 text-[13px] leading-relaxed font-sans">{s.visual}</td>
+                    <td className="px-8 py-8 text-violet-300 text-sm italic font-medium">{s.dialogue}</td>
+                    <td className="px-8 py-8">
+                      <div className="p-4 bg-black/40 border border-white/5 rounded-2xl font-mono text-[10px] text-amber-200/40 group-hover:text-amber-200 transition-all">
+                        {s.prompt}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {isGenerating && streamingText && parsedShots.length === 0 && (
+          <div className="max-w-4xl mx-auto p-20 bg-blue-600/[0.02] border border-blue-500/10 rounded-[4rem] animate-pulse">
+            <div className="flex items-center gap-4 mb-10">
+              <div className="w-10 h-10 border-2 border-white/5 border-t-blue-500 rounded-full animate-spin"></div>
+              <span className="text-xs font-black text-blue-400 uppercase tracking-widest">导演正在进行工业级分镜拆解，确保时长 > 120s</span>
+            </div>
+            <div className="text-white/30 text-[13px] italic whitespace-pre-wrap font-mono leading-relaxed">
+              {streamingText.substring(Math.max(0, streamingText.length - 1000))}
+              <span className="inline-block w-2 h-4 bg-blue-500 ml-1"></span>
+            </div>
           </div>
         )}
       </div>

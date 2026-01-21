@@ -6,24 +6,29 @@ import ScriptPanel from './ScriptPanel.tsx';
 import OutlinePanel from './OutlinePanel.tsx';
 import CharacterVisuals from './CharacterVisuals.tsx';
 import ShotsPanel from './ShotsPanel.tsx';
+import MergePanel from './MergePanel.tsx';
 
 interface WorkspaceProps {
   files: KBFile[];
+  initialTab?: WorkspaceTab;
   onUpdateFiles?: (f: KBFile[]) => void;
 }
 
-const Workspace: React.FC<WorkspaceProps> = ({ files, onUpdateFiles }) => {
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>(WorkspaceTab.SCRIPT);
+const Workspace: React.FC<WorkspaceProps> = ({ files, initialTab = WorkspaceTab.SCRIPT, onUpdateFiles }) => {
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>(initialTab);
   const [mode, setMode] = useState<AudienceMode>(AudienceMode.MALE);
   const [allBlocks, setAllBlocks] = useState<any[]>([]);
 
-  // 尝试从本地加载已生成的剧本块以供分镜表使用
   useEffect(() => {
-    // 遍历 localStorage 获取所有 script_blocks_v5
+    setActiveTab(initialTab);
+  }, [initialTab]);
+
+  // 同步加载所有生成的剧本块，统一使用 v12 版本键
+  const refreshBlocks = () => {
     const blocks: any[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key?.startsWith('script_blocks_v5_')) {
+      if (key?.startsWith('script_blocks_v12_')) {
         const item = localStorage.getItem(key);
         if (item) {
           try {
@@ -33,6 +38,17 @@ const Workspace: React.FC<WorkspaceProps> = ({ files, onUpdateFiles }) => {
       }
     }
     setAllBlocks(blocks);
+  };
+
+  useEffect(() => {
+    refreshBlocks();
+    // 监听 storage 变化以便实时更新
+    window.addEventListener('storage', refreshBlocks);
+    const interval = setInterval(refreshBlocks, 3000); // 轮询检查是否有新集数
+    return () => {
+      window.removeEventListener('storage', refreshBlocks);
+      clearInterval(interval);
+    };
   }, [activeTab]);
 
   const handleSaveToKB = (newFile: KBFile) => {
@@ -50,6 +66,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ files, onUpdateFiles }) => {
               { tab: WorkspaceTab.SHOTS, icon: ICONS.Library, label: '分镜脚本', color: 'bg-violet-600' },
               { tab: WorkspaceTab.OUTLINE, icon: ICONS.Users, label: '提取大纲', color: 'bg-indigo-600' },
               { tab: WorkspaceTab.VISUALS, icon: ICONS.Image, label: '角色生成', color: 'bg-emerald-600' },
+              { tab: WorkspaceTab.MERGE, icon: ICONS.Merge, label: '原著合并', color: 'bg-amber-600' },
             ].map((item) => (
               <button
                 key={item.tab}
@@ -94,6 +111,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ files, onUpdateFiles }) => {
           {activeTab === WorkspaceTab.OUTLINE && <OutlinePanel files={files} onSaveToKB={handleSaveToKB} />}
           {activeTab === WorkspaceTab.VISUALS && <CharacterVisuals mode={mode} files={files} onSaveToKB={handleSaveToKB} />}
           {activeTab === WorkspaceTab.SHOTS && <ShotsPanel sourceBlocks={allBlocks} files={files} onSaveToKB={handleSaveToKB} />}
+          {activeTab === WorkspaceTab.MERGE && <MergePanel files={files} onSaveToKB={handleSaveToKB} />}
         </div>
       </section>
     </div>

@@ -1,7 +1,7 @@
 
-import { GoogleGenAI, Modality } from "@google/genai";
-import { SYSTEM_PROMPT_BASE, MALE_MODE_PROMPT, FEMALE_MODE_PROMPT, STYLE_PROMPTS } from "../constants.tsx";
-import { AudienceMode, ScriptBlock, ModelType, DirectorStyle } from "../types.ts";
+import { GoogleGenAI, Modality, Type } from "@google/genai";
+import { SYSTEM_PROMPT_BASE, STYLE_PROMPTS, TROPE_PROMPTS } from "../constants.tsx";
+import { AudienceMode, ScriptBlock, ModelType, DirectorStyle, TropeType } from "../types.ts";
 
 export class GeminiService {
   private getAI() {
@@ -11,151 +11,15 @@ export class GeminiService {
   static cleanText(text: string | undefined): string {
     if (!text) return "";
     return text
-      .replace(/[#\*`\-_~>]/g, '')
-      .replace(/\[Shot:/gi, '（镜头：')
-      .replace(/\[.*?\]/g, '')
-      .replace(/\{.*?\}/g, '')
-      .replace(/[a-zA-Z]{5,}/g, '') 
-      .replace(/\n\s*\n/g, '\n\n')
+      .replace(/[#\*`\-_~>]/g, '') // 移除 Markdown 符号
+      .replace(/\[/g, '（').replace(/\]/g, '）') // 替换方括号为中文括号
+      .replace(/Shot:|镜头:/gi, '镜头：')
+      .replace(/Visual:|画面:/gi, '画面：')
+      .replace(/Audio:|音频:/gi, '音频：')
+      .replace(/Duration:|时长:/gi, '时长：')
+      .replace(/Scene:|场景:/gi, '场景：')
+      .replace(/[a-zA-Z]+:/g, (match) => match.includes('http') ? match : '') // 移除大部分英文标签，保留URL
       .trim();
-  }
-
-  async *generateTechnicalShotListStream(scriptContent: string, referenceContent: string = "") {
-    const ai = this.getAI();
-    const prompt = `
-    任务：【专业动画分镜脚本 (Vidu 优化版) 转化】
-    请将以下剧本内容转化为工业级分镜表，特别针对视频生成模型 Vidu 进行提示词优化。
-    
-    输出要求：
-    1. 每一行代表一个镜头，必须严格按照以下 6 列格式输出，使用 | 分隔：
-       镜号 | 时长 | 视听语言 | 画面描述 | 原著台词 | Vidu 一致性提示词
-    
-    2. 字段详细规范：
-       - 镜号：纯数字。
-       - 时长：格式为 "X.0s"，根据动作复杂度评估。
-       - 视听语言：包含“景别 / 运动”，如“全景 / 仰拍推近”、“特写 / 俯拍旋转”。
-       - 画面描述：详细描述视觉元素。
-       - 原著台词：台词或音效描述。
-       - Vidu 一致性提示词：必须使用方括号格式，如 [2D动漫风格][背景描述][角色描述][镜头运动][氛围/特效细节]。
-    
-    ${referenceContent ? `3. 参考模板风格：\n${referenceContent.substring(0, 2000)}` : "3. 确保镜头节奏感强，符合 2D 动漫视听语言。"}
-    
-    剧本内容：
-    ${scriptContent}
-    `;
-    const response = await ai.models.generateContentStream({
-      model: 'gemini-3-flash-preview',
-      contents: [{ parts: [{ text: prompt }] }],
-      config: { 
-        systemInstruction: "你是一位资深的动画导演和 Vidu 提示词专家，擅长将文字剧本转化为精确的视觉生产指令。",
-        temperature: 0.7 
-      },
-    });
-    for await (const chunk of response) {
-      if (chunk.text) yield chunk.text;
-    }
-  }
-
-  async *aiProofreadStream(content: string) {
-    const ai = this.getAI();
-    const promptText = `
-    任务：【AI 专业剧本校对】
-    请对以下动漫脚本进行深度校对。
-    
-    要求：
-    1. 修正错别字、语法错误。
-    2. 优化（镜头：...）视觉逻辑。
-    3. 提升台词表演力。
-    格式：问题列表 + 精修剧本。
-    内容：${content}
-    `;
-    const response = await ai.models.generateContentStream({
-      model: 'gemini-3-flash-preview',
-      contents: [{ parts: [{ text: promptText }] }],
-      config: { temperature: 0.7 },
-    });
-    for await (const chunk of response) {
-      if (chunk.text) yield chunk.text;
-    }
-  }
-
-  async *generateFullOutlineStream(mode: AudienceMode, content: string, deep: boolean, referenceContent: string = "") {
-    const ai = this.getAI();
-    const prompt = `
-    任务：改编动漫全辑大纲。
-    风格：${mode === AudienceMode.MALE ? MALE_MODE_PROMPT : FEMALE_MODE_PROMPT}
-    要求：每 3 集为一个剧情单元。
-    ${referenceContent ? `格式参考（请模仿其详略和排版）：\n${referenceContent.substring(0, 1500)}` : ""}
-    
-    内容素材：${content.substring(0, 15000)}
-    `;
-    const response = await ai.models.generateContentStream({
-      model: 'gemini-3-pro-preview',
-      contents: [{ parts: [{ text: prompt }] }],
-    });
-    for await (const chunk of response) {
-      if (chunk.text) yield chunk.text;
-    }
-  }
-
-  async *extractCharactersStream(content: string, referenceContent: string = "") {
-    const ai = this.getAI();
-    const prompt = `
-    任务：提取核心角色简档。
-    要求：包含性格、外貌、特殊能力。
-    ${referenceContent ? `风格参考（请模仿其颗粒度）：\n${referenceContent.substring(0, 1500)}` : ""}
-    
-    内容素材：${content.substring(0, 10000)}
-    `;
-    const response = await ai.models.generateContentStream({
-      model: 'gemini-3-flash-preview',
-      contents: [{ parts: [{ text: prompt }] }],
-    });
-    for await (const chunk of response) {
-      if (chunk.text) yield chunk.text;
-    }
-  }
-
-  async *extractReferenceScriptStream(content: string) {
-    const ai = this.getAI();
-    const prompt = `分析并提取以下剧本的“写作风格模板”，包含分镜描述习惯、台词节奏特征。输出一份可复用的格式指南。\n\n${content.substring(0, 8000)}`;
-    const response = await ai.models.generateContentStream({
-      model: 'gemini-3-flash-preview',
-      contents: [{ parts: [{ text: prompt }] }],
-    });
-    for await (const chunk of response) {
-      if (chunk.text) yield chunk.text;
-    }
-  }
-
-  async *generateCharacterBioStream(content: string, referenceContent: string = "") {
-    const ai = this.getAI();
-    const prompt = `
-    任务：撰写 2D 动漫标准人物小传。
-    要求：包含性格缺陷、高光时刻、视觉锚点。
-    ${referenceContent ? `风格参考：\n${referenceContent.substring(0, 1500)}` : ""}
-    
-    素材：${content.substring(0, 8000)}
-    `;
-    const response = await ai.models.generateContentStream({
-      model: 'gemini-3-pro-preview',
-      contents: [{ parts: [{ text: prompt }] }],
-    });
-    for await (const chunk of response) {
-      if (chunk.text) yield chunk.text;
-    }
-  }
-
-  async *reverseReasonCharacterSettings(brief: string) {
-    const ai = this.getAI();
-    const prompt = `根据以下碎片信息反向推理角色的深层动机、世界观背景和反差萌设计：\n\n${brief}`;
-    const response = await ai.models.generateContentStream({
-      model: 'gemini-3-pro-preview',
-      contents: [{ parts: [{ text: prompt }] }],
-    });
-    for await (const chunk of response) {
-      if (chunk.text) yield chunk.text;
-    }
   }
 
   async *generateScriptBlockStream(
@@ -165,62 +29,135 @@ export class GeminiService {
     blockIndex: number, 
     model: ModelType = ModelType.FLASH,
     style: DirectorStyle = DirectorStyle.UFOTABLE,
-    referenceContent: string = "",
-    outlineContent: string = ""
+    trope?: TropeType,
+    referenceContent: string = ""
   ) {
     const ai = this.getAI();
-    const startEp = (blockIndex - 1) * 3 + 1;
-    const endEp = blockIndex * 3;
-    const offset = Math.max(0, (blockIndex - 1) * 8000); 
-    const truncatedSource = sourceContent.substring(offset, offset + 12000);
+    const offset = Math.max(0, (blockIndex - 1) * 3000); 
+    const truncatedSource = sourceContent.substring(offset, offset + 5000);
 
     const promptText = `
-    单元：第 ${startEp}-${endEp} 集
-    调性：${mode === AudienceMode.MALE ? MALE_MODE_PROMPT : FEMALE_MODE_PROMPT} 
-    视觉风格：${STYLE_PROMPTS[style]}
-    ${referenceContent ? `风格参考模板：${referenceContent.substring(0, 2000)}` : ""}
-    ${outlineContent ? `剧情大纲参考：${outlineContent.substring(0, 2000)}` : ""}
-    上下文记忆：${previousBlocks.length > 0 ? previousBlocks[previousBlocks.length - 1].content.slice(-800) : '起始章节'}
+    【第 ${blockIndex} 集剧本改编任务】
+    小说原著内容：${truncatedSource}
     
-    原著素材：
-    ${truncatedSource}
+    要求：
+    1. 改编为适合动漫呈现的剧本，情感饱满，动作感强。
+    2. 禁止输出任何英文标签、Markdown 符号或乱码。
+    3. 风格参考：${STYLE_PROMPTS[style]}
+    4. 爽点模式：${trope ? TROPE_PROMPTS[trope] : "通用"}
     `;
 
     const response = await ai.models.generateContentStream({
       model: model,
       contents: [{ parts: [{ text: promptText }] }],
-      config: { systemInstruction: SYSTEM_PROMPT_BASE, temperature: 0.8 },
+      config: { 
+        systemInstruction: SYSTEM_PROMPT_BASE + "\n请使用纯净中文输出，禁止任何 Markdown 格式符号。", 
+        temperature: 0.8,
+      },
     });
+
     for await (const chunk of response) {
       if (chunk.text) yield chunk.text;
     }
   }
 
-  async generateCharacterImage(description: string, mode: AudienceMode): Promise<string> {
+  async *generateTechnicalShotListStream(scriptContent: string, refTemplate: string = "") {
     const ai = this.getAI();
-    const prompt = `Anime character sheet, ${description}, crisp lineart, studio quality, ${mode === AudienceMode.MALE ? 'shonen' : 'shoujo'}`;
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
+    const prompt = `
+    【工业级高精细分镜拆解任务 - 目标时长：120-180秒】
+    你现在的身份是一位经验丰富的动漫导演。请将以下剧本拆解为极其详尽的分镜脚本。
+
+    剧本内容：
+    ${scriptContent}
+
+    【硬性要求】
+    1. **时长控制**：总时长必须在 120 秒到 180 秒之间。请根据剧情密度合理分配，确保总和多余 2 分钟。
+    2. **镜头密度**：必须拆解出至少 30-45 个镜头，确保每一秒的视听体验都有据可查。
+    3. **输出格式**：每一行必须严格按照 6 列输出，使用 "|" 分隔。禁止输出任何 Markdown 表格边框线（如 ---|---）。
+    格式：镜号 | 时长 | 视听语言 | 画面描述 | 原著台词 | Vidu 生成视频的提示词
+
+    【列定义】
+    - 镜号：自增数字，如 01, 02...
+    - 时长：必须以 "s" 结尾，如 "3s", "5s"。
+    - 视听语言：包含景别（特写/全景）、运动（推拉摇移）、光影基调。
+    - 画面描述：极致细腻的 2D 动漫画面表现，禁止输出乱码。
+    - 原著台词：该镜头的角色对白。无对白填“（无）”。
+    - Vidu 提示词：高质量英文 Prompt，包含角色一致性描写、风格、光影。
+
+    不要输出任何前言和总结，禁止输出 Markdown 符号，直接开始输出分镜行。
+    `;
+
+    const response = await ai.models.generateContentStream({
+      model: 'gemini-3-flash-preview',
       contents: [{ parts: [{ text: prompt }] }],
-      config: { imageConfig: { aspectRatio: "1:1" } },
+      config: { 
+        systemInstruction: "你是一个专业的动漫导演分镜助手。你只负责按格式输出纯净的数据行，禁止使用 # * - 等符号。",
+        temperature: 0.7,
+      },
     });
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
+
+    for await (const chunk of response) {
+      if (chunk.text) yield chunk.text;
     }
-    return "";
   }
 
-  async generateShotImage(description: string, mode: AudienceMode, aspectRatio: string = "16:9", style: DirectorStyle = DirectorStyle.UFOTABLE): Promise<string> {
+  async *generateFullOutlineStream(mode: AudienceMode, content: string, deep: boolean, ref: string) {
     const ai = this.getAI();
-    const prompt = `Anime cinematic shot, ${description}, ${STYLE_PROMPTS[style]}, high quality, ${mode === AudienceMode.MALE ? 'shonen' : 'shoujo'}`;
+    const prompt = `请为以下小说内容提取连载大纲。${deep ? '深度模式。' : ''} 参考模板：${ref}\n\n内容：${content.substring(0, 8000)}`;
+    const response = await ai.models.generateContentStream({
+      model: 'gemini-3-flash-preview',
+      contents: [{ parts: [{ text: prompt }] }],
+      config: { systemInstruction: SYSTEM_PROMPT_BASE }
+    });
+    for await (const chunk of response) if (chunk.text) yield chunk.text;
+  }
+
+  async *extractCharactersStream(content: string, ref: string) {
+    const ai = this.getAI();
+    const prompt = `从内容中提取核心人物及其设定：${content.substring(0, 6000)}`;
+    const response = await ai.models.generateContentStream({
+      model: 'gemini-3-flash-preview',
+      contents: [{ parts: [{ text: prompt }] }],
+    });
+    for await (const chunk of response) if (chunk.text) yield chunk.text;
+  }
+
+  async *generateCharacterBioStream(name: string, desc: string, source: string, ref?: string) {
+    const ai = this.getAI();
+    const prompt = `为角色【${name}】编写深度人物小传。原著：${source.substring(0, 4000)}`;
+    const response = await ai.models.generateContentStream({
+      model: 'gemini-3-flash-preview',
+      contents: [{ parts: [{ text: prompt }] }],
+    });
+    for await (const chunk of response) if (chunk.text) yield chunk.text;
+  }
+
+  async *extractReferenceScriptStream(content: string) {
+    const ai = this.getAI();
+    const prompt = `分析剧本结构：${content.substring(0, 5000)}`;
+    const response = await ai.models.generateContentStream({
+      model: 'gemini-3-flash-preview',
+      contents: [{ parts: [{ text: prompt }] }],
+    });
+    for await (const chunk of response) if (chunk.text) yield chunk.text;
+  }
+
+  async generateCharacterImage(prompt: string, mode: AudienceMode) {
+    const ai = this.getAI();
+    const fullPrompt = `Anime style, high quality 2D, character portrait, ${prompt}`;
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
-      contents: [{ parts: [{ text: prompt }] }],
-      config: { imageConfig: { aspectRatio: aspectRatio as any } },
+      contents: [{ parts: [{ text: fullPrompt }] }],
     });
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
+    let base64 = "";
+    if (response.candidates?.[0]?.content?.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+          base64 = part.inlineData.data;
+          break;
+        }
+      }
     }
-    return "";
+    return `data:image/png;base64,${base64}`;
   }
 }

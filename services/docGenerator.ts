@@ -1,48 +1,50 @@
 
-import { Document, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel, Table, TableRow, TableCell, WidthType, BorderStyle } from "docx";
+import { Document, Packer, Paragraph, TextRun, AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle, VerticalAlign } from "docx";
 
 export class DocGenerator {
   static async createWordDoc(title: string, content: string): Promise<Blob> {
-    const lines = content.split('\n');
+    // 解析剧本内容为结构化数据
     const tableRows: TableRow[] = [
       new TableRow({
         children: [
-          this.createHeaderCell("镜头ID/时长"),
-          this.createHeaderCell("视觉 (Visuals)"),
-          this.createHeaderCell("听觉 (Audio)"),
+          this.createHeaderCell("镜号", 8),
+          this.createHeaderCell("画面内容与动作描写 (Visuals)", 42),
+          this.createHeaderCell("角色", 12),
+          this.createHeaderCell("对白 (Dialogue)", 28),
+          this.createHeaderCell("音效/BGM", 10),
         ],
       }),
     ];
 
-    let currentShot = "";
-    let currentV = "";
-    let currentA = "";
+    const lines = content.split('\n').map(l => l.trim()).filter(l => l);
+    let currentShotNum = 1;
 
     lines.forEach(line => {
-      const cleaned = line.trim();
-      if (cleaned.startsWith('[Shot:')) {
-        // 如果有旧数据，先推入一行
-        if (currentShot) {
-          tableRows.push(this.createDataRow(currentShot, currentV, currentA));
-        }
-        const shotMatch = cleaned.match(/\[Shot:(.*?)\]/);
-        const durMatch = cleaned.match(/\[Duration:(.*?)\]/);
-        currentShot = `${shotMatch?.[1] || '--'} (${durMatch?.[1] || '2s'})`;
-        currentV = cleaned.split(']').slice(2).join(']').trim(); // 提取视觉描述
-        currentA = "";
-      } else if (cleaned.startsWith('[角色:')) {
-        currentA += cleaned + "\n";
-      } else if (cleaned.startsWith('[音效:')) {
-        currentA += "SFX: " + cleaned.replace('[音效:', '').replace(']', '') + "\n";
+      if (line.includes('（镜头：') || line.startsWith('镜头')) {
+        const visual = line.replace(/（镜头：/g, '').replace(/）/g, '').replace(/镜头\d+：/g, '');
+        tableRows.push(new TableRow({
+          children: [
+            this.createDataCell(currentShotNum.toString().padStart(2, '0'), true),
+            this.createDataCell(visual),
+            this.createDataCell("---"),
+            this.createDataCell("---"),
+            this.createDataCell("Ambient"),
+          ]
+        }));
+        currentShotNum++;
+      } else if (line.includes('：') && !line.startsWith('场景')) {
+        const [char, dialogue] = line.split('：');
+        // 尝试合并到上一行（如果是分镜下的台词）或另起一行
+        tableRows.push(new TableRow({
+          children: [
+            this.createDataCell(""),
+            this.createDataCell(""),
+            this.createDataCell(char, true),
+            this.createDataCell(dialogue, false, true),
+            this.createDataCell("VO"),
+          ]
+        }));
       }
-    });
-    
-    // 推入最后一行
-    if (currentShot) tableRows.push(this.createDataRow(currentShot, currentV, currentA));
-
-    const table = new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: tableRows,
     });
 
     const doc = new Document({
@@ -51,10 +53,15 @@ export class DocGenerator {
         children: [
           new Paragraph({
             alignment: AlignmentType.CENTER,
-            children: [new TextRun({ text: title, bold: true, size: 40 })],
+            children: [
+              new TextRun({ text: title, bold: true, size: 36, font: "Microsoft YaHei" }),
+            ],
             spacing: { after: 400 }
           }),
-          table
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: tableRows,
+          })
         ],
       }],
     });
@@ -62,21 +69,30 @@ export class DocGenerator {
     return await Packer.toBlob(doc);
   }
 
-  private static createHeaderCell(text: string) {
+  private static createHeaderCell(text: string, width: number) {
     return new TableCell({
-      children: [new Paragraph({ children: [new TextRun({ text, bold: true, color: "FFFFFF" })], alignment: AlignmentType.CENTER })],
-      shading: { fill: "1e293b" },
-      borders: { top: { style: BorderStyle.SINGLE, size: 1 }, bottom: { style: BorderStyle.SINGLE, size: 1 } }
+      width: { size: width, type: WidthType.PERCENTAGE },
+      children: [new Paragraph({ 
+        children: [new TextRun({ text, bold: true, color: "FFFFFF", size: 18, font: "Microsoft YaHei" })], 
+        alignment: AlignmentType.CENTER 
+      })],
+      shading: { fill: "2563EB" },
+      verticalAlign: VerticalAlign.CENTER,
+      margins: { top: 100, bottom: 100, left: 100, right: 100 }
     });
   }
 
-  private static createDataRow(shot: string, v: string, a: string) {
-    return new TableRow({
-      children: [
-        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: shot, size: 18, bold: true })] })], width: { size: 15, type: WidthType.PERCENTAGE } }),
-        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: v, size: 20 })] })], width: { size: 45, type: WidthType.PERCENTAGE } }),
-        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: a, size: 20, italic: true })] })], width: { size: 40, type: WidthType.PERCENTAGE } }),
-      ],
+  private static createDataCell(text: string, isBold: boolean = false, isItalic: boolean = false) {
+    return new TableCell({
+      children: [new Paragraph({ 
+        children: [new TextRun({ text, size: 18, bold: isBold, italic: isItalic, font: "Microsoft YaHei" })],
+        spacing: { before: 80, after: 80 }
+      })],
+      verticalAlign: VerticalAlign.TOP,
+      margins: { top: 100, bottom: 100, left: 100, right: 100 },
+      borders: {
+        bottom: { style: BorderStyle.SINGLE, size: 1, color: "E2E8F0" }
+      }
     });
   }
 
