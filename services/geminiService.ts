@@ -20,9 +20,34 @@ export class GeminiService {
       .trim();
   }
 
-  /**
-   * AI 脚本校对：检查错别字、逻辑与台词节奏
-   */
+  async *generateTechnicalShotListStream(scriptContent: string, referenceContent: string = "") {
+    const ai = this.getAI();
+    const prompt = `
+    任务：【动漫工业级分镜表转化】
+    请将以下剧本内容转化为标准的动漫分镜表。
+    
+    输出要求：
+    1. 每一行代表一个镜头。
+    2. 严格遵循格式：[镜头号] | [景别/运动] | [画面描述] | [对白/声效]
+    3. 景别必须包含：特写(CU)、中景(MS)、全景(WS)、俯冲(Tilt)、平移(Pan)等专业术语。
+    ${referenceContent ? `4. 格式与术语参考模板（模仿其颗粒度和排版）：\n${referenceContent.substring(0, 2000)}` : "4. 确保镜头逻辑连贯，动作感强。"}
+    
+    剧本内容：
+    ${scriptContent}
+    `;
+    const response = await ai.models.generateContentStream({
+      model: 'gemini-3-flash-preview',
+      contents: [{ parts: [{ text: prompt }] }],
+      config: { 
+        systemInstruction: "你是一位拥有 20 年经验的动漫分镜导演，擅长拆解镜头节奏。",
+        temperature: 0.7 
+      },
+    });
+    for await (const chunk of response) {
+      if (chunk.text) yield chunk.text;
+    }
+  }
+
   async *aiProofreadStream(content: string) {
     const ai = this.getAI();
     const promptText = `
@@ -30,60 +55,53 @@ export class GeminiService {
     请对以下动漫脚本进行深度校对。
     
     要求：
-    1. 发现并修正错别字、语法错误和不通顺的台词。
-    2. 检查（镜头：...）描述是否生动，是否符合 2D 动漫视觉逻辑。
-    3. 优化台词节奏，使其更具表演力。
-    4. 输出格式：
-       - 问题列表：简要列出发现的具体问题。
-       - 精修剧本：输出优化后的完整剧本，保持原有的格式。
-    
-    脚本内容：
-    ${content}
+    1. 修正错别字、语法错误。
+    2. 优化（镜头：...）视觉逻辑。
+    3. 提升台词表演力。
+    格式：问题列表 + 精修剧本。
+    内容：${content}
     `;
     const response = await ai.models.generateContentStream({
       model: 'gemini-3-flash-preview',
       contents: [{ parts: [{ text: promptText }] }],
-      config: { 
-        systemInstruction: "你是一个极其严苛的动漫金牌审稿人。请用中文回答，保持专业、犀利且富有建设性。",
-        temperature: 0.7,
-        thinkingConfig: { thinkingBudget: 0 }
-      },
+      config: { temperature: 0.7 },
     });
     for await (const chunk of response) {
       if (chunk.text) yield chunk.text;
     }
   }
 
-  async *generateFullOutlineStream(mode: AudienceMode, content: string, deep: boolean) {
+  async *generateFullOutlineStream(mode: AudienceMode, content: string, deep: boolean, referenceContent: string = "") {
     const ai = this.getAI();
     const prompt = `
-    任务：将以下小说内容改编为动漫全辑大纲。
-    要求：
-    1. 风格：${mode === AudienceMode.MALE ? MALE_MODE_PROMPT : FEMALE_MODE_PROMPT}
-    2. 深度：${deep ? '深度解析每一章的冲突与爽点' : '简洁概述主线'}
-    3. 输出：每 3 集为一个剧情单元，列出核心冲突和视觉高光。
-    内容：${content.substring(0, 15000)}
+    任务：改编动漫全辑大纲。
+    风格：${mode === AudienceMode.MALE ? MALE_MODE_PROMPT : FEMALE_MODE_PROMPT}
+    要求：每 3 集为一个剧情单元。
+    ${referenceContent ? `格式参考（请模仿其详略和排版）：\n${referenceContent.substring(0, 1500)}` : ""}
+    
+    内容素材：${content.substring(0, 15000)}
     `;
     const response = await ai.models.generateContentStream({
       model: 'gemini-3-pro-preview',
       contents: [{ parts: [{ text: prompt }] }],
-      config: { 
-        systemInstruction: "你是一个资深动漫策划，擅长将长篇网文精准切片为剧本大纲。",
-        thinkingConfig: { thinkingBudget: 0 }
-      },
     });
     for await (const chunk of response) {
       if (chunk.text) yield chunk.text;
     }
   }
 
-  async *extractCharactersStream(content: string) {
+  async *extractCharactersStream(content: string, referenceContent: string = "") {
     const ai = this.getAI();
-    const prompt = `从以下文本中提取所有核心角色及其性格特征、外貌描述、特殊能力：\n\n${content.substring(0, 10000)}`;
+    const prompt = `
+    任务：提取核心角色简档。
+    要求：包含性格、外貌、特殊能力。
+    ${referenceContent ? `风格参考（请模仿其颗粒度）：\n${referenceContent.substring(0, 1500)}` : ""}
+    
+    内容素材：${content.substring(0, 10000)}
+    `;
     const response = await ai.models.generateContentStream({
       model: 'gemini-3-flash-preview',
       contents: [{ parts: [{ text: prompt }] }],
-      config: { thinkingConfig: { thinkingBudget: 0 } }
     });
     for await (const chunk of response) {
       if (chunk.text) yield chunk.text;
@@ -92,24 +110,28 @@ export class GeminiService {
 
   async *extractReferenceScriptStream(content: string) {
     const ai = this.getAI();
-    const prompt = `分析以下剧本片段的写作风格、分镜描述习惯、台词节奏，并提炼成一份可供后续改编参考的“风格模板”说明。要求保留其标志性的格式特征。\n\n${content.substring(0, 8000)}`;
+    const prompt = `分析并提取以下剧本的“写作风格模板”，包含分镜描述习惯、台词节奏特征。输出一份可复用的格式指南。\n\n${content.substring(0, 8000)}`;
     const response = await ai.models.generateContentStream({
       model: 'gemini-3-flash-preview',
       contents: [{ parts: [{ text: prompt }] }],
-      config: { thinkingConfig: { thinkingBudget: 0 } }
     });
     for await (const chunk of response) {
       if (chunk.text) yield chunk.text;
     }
   }
 
-  async *generateCharacterBioStream(content: string) {
+  async *generateCharacterBioStream(content: string, referenceContent: string = "") {
     const ai = this.getAI();
-    const prompt = `基于以下设定，扩写并精修为一份【2D动漫标准人物小传】。包含性格缺陷、高光时刻和视觉锚点。\n\n内容：${content.substring(0, 8000)}`;
+    const prompt = `
+    任务：撰写 2D 动漫标准人物小传。
+    要求：包含性格缺陷、高光时刻、视觉锚点。
+    ${referenceContent ? `风格参考：\n${referenceContent.substring(0, 1500)}` : ""}
+    
+    素材：${content.substring(0, 8000)}
+    `;
     const response = await ai.models.generateContentStream({
       model: 'gemini-3-pro-preview',
       contents: [{ parts: [{ text: prompt }] }],
-      config: { thinkingConfig: { thinkingBudget: 0 } }
     });
     for await (const chunk of response) {
       if (chunk.text) yield chunk.text;
@@ -118,11 +140,10 @@ export class GeminiService {
 
   async *reverseReasonCharacterSettings(brief: string) {
     const ai = this.getAI();
-    const prompt = `根据用户提供的碎片信息（视觉、性格或对白），反向推理并构建该角色的深层世界观背景、动机和反差萌设计：\n\n${brief}`;
+    const prompt = `根据以下碎片信息反向推理角色的深层动机、世界观背景和反差萌设计：\n\n${brief}`;
     const response = await ai.models.generateContentStream({
       model: 'gemini-3-pro-preview',
       contents: [{ parts: [{ text: prompt }] }],
-      config: { thinkingConfig: { thinkingBudget: 0 } }
     });
     for await (const chunk of response) {
       if (chunk.text) yield chunk.text;
@@ -157,21 +178,13 @@ export class GeminiService {
     ${truncatedSource}
     `;
 
-    try {
-      const response = await ai.models.generateContentStream({
-        model: model,
-        contents: [{ parts: [{ text: promptText }] }],
-        config: { 
-          systemInstruction: SYSTEM_PROMPT_BASE, 
-          temperature: 0.8,
-          thinkingConfig: { thinkingBudget: 0 }
-        },
-      });
-      for await (const chunk of response) {
-        if (chunk.text) yield chunk.text;
-      }
-    } catch (error: any) {
-      throw new Error(error.message);
+    const response = await ai.models.generateContentStream({
+      model: model,
+      contents: [{ parts: [{ text: promptText }] }],
+      config: { systemInstruction: SYSTEM_PROMPT_BASE, temperature: 0.8 },
+    });
+    for await (const chunk of response) {
+      if (chunk.text) yield chunk.text;
     }
   }
 

@@ -1,10 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { WorkspaceTab, KBFile, AudienceMode, ModelType } from '../types.ts';
 import { ICONS } from '../constants.tsx';
 import ScriptPanel from './ScriptPanel.tsx';
 import OutlinePanel from './OutlinePanel.tsx';
 import CharacterVisuals from './CharacterVisuals.tsx';
+import ShotsPanel from './ShotsPanel.tsx';
 
 interface WorkspaceProps {
   files: KBFile[];
@@ -14,6 +15,29 @@ interface WorkspaceProps {
 const Workspace: React.FC<WorkspaceProps> = ({ files, onUpdateFiles }) => {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>(WorkspaceTab.SCRIPT);
   const [mode, setMode] = useState<AudienceMode>(AudienceMode.MALE);
+  const [allBlocks, setAllBlocks] = useState<any[]>([]);
+
+  // 尝试从本地加载已生成的剧本块以供分镜表使用
+  useEffect(() => {
+    // 遍历 localStorage 获取所有 script_blocks_v5
+    const blocks: any[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('script_blocks_v5_')) {
+        const item = localStorage.getItem(key);
+        if (item) {
+          try {
+            blocks.push(...JSON.parse(item));
+          } catch(e) {}
+        }
+      }
+    }
+    setAllBlocks(blocks);
+  }, [activeTab]);
+
+  const handleSaveToKB = (newFile: KBFile) => {
+    onUpdateFiles?.([newFile]);
+  };
 
   return (
     <div className="h-full flex overflow-hidden">
@@ -23,6 +47,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ files, onUpdateFiles }) => {
           <nav className="space-y-2">
             {[
               { tab: WorkspaceTab.SCRIPT, icon: ICONS.FileText, label: '生成剧本', color: 'bg-blue-600' },
+              { tab: WorkspaceTab.SHOTS, icon: ICONS.Library, label: '分镜脚本', color: 'bg-violet-600' },
               { tab: WorkspaceTab.OUTLINE, icon: ICONS.Users, label: '提取大纲', color: 'bg-indigo-600' },
               { tab: WorkspaceTab.VISUALS, icon: ICONS.Image, label: '角色生成', color: 'bg-emerald-600' },
             ].map((item) => (
@@ -65,9 +90,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ files, onUpdateFiles }) => {
 
       <section className="flex-1 bg-white flex flex-col min-h-0 relative">
         <div className="flex-1 min-h-0 flex flex-col">
-          {activeTab === WorkspaceTab.SCRIPT && <ScriptPanel files={files} mode={mode} modelType={ModelType.FLASH} />}
-          {activeTab === WorkspaceTab.OUTLINE && <OutlinePanel files={files} onSaveToKB={(f) => onUpdateFiles?.([f])} />}
-          {activeTab === WorkspaceTab.VISUALS && <CharacterVisuals mode={mode} files={files} onSaveToKB={(f) => onUpdateFiles?.([f])} />}
+          {activeTab === WorkspaceTab.SCRIPT && <ScriptPanel files={files} mode={mode} modelType={ModelType.FLASH} onSaveToKB={handleSaveToKB} />}
+          {activeTab === WorkspaceTab.OUTLINE && <OutlinePanel files={files} onSaveToKB={handleSaveToKB} />}
+          {activeTab === WorkspaceTab.VISUALS && <CharacterVisuals mode={mode} files={files} onSaveToKB={handleSaveToKB} />}
+          {activeTab === WorkspaceTab.SHOTS && <ShotsPanel sourceBlocks={allBlocks} files={files} onSaveToKB={handleSaveToKB} />}
         </div>
       </section>
     </div>

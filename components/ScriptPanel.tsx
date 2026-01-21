@@ -9,9 +9,10 @@ interface ScriptPanelProps {
   files: KBFile[];
   mode: AudienceMode;
   modelType: ModelType;
+  onSaveToKB?: (f: KBFile) => void;
 }
 
-const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType }) => {
+const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType, onSaveToKB }) => {
   const [sourceId, setSourceId] = useState<string>('');
   const [referenceId, setReferenceId] = useState<string>('');
   const [outlineId, setOutlineId] = useState<string>('');
@@ -26,6 +27,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType }) => 
   const [proofreadingId, setProofreadingId] = useState<string | null>(null);
   const [proofreadResult, setProofreadResult] = useState('');
   const [isProofreading, setIsProofreading] = useState(false);
+  const [saveStatus, setSaveStatus] = useState(false);
   
   const gemini = useMemo(() => new GeminiService(), []);
   const nextBlockIndex = blocks.length + 1;
@@ -35,6 +37,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType }) => 
       const saved = localStorage.getItem(`script_blocks_v5_${sourceId}`);
       if (saved) setBlocks(JSON.parse(saved));
       else setBlocks([]);
+      setSaveStatus(false);
     }
   }, [sourceId]);
 
@@ -47,6 +50,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType }) => 
   const handleGenerate = async (targetIdx?: number) => {
     if (!sourceId) return;
     setIsGenerating(true);
+    setSaveStatus(false);
     
     const isRegen = targetIdx !== undefined;
     const currentIdx = isRegen ? targetIdx : nextBlockIndex;
@@ -104,6 +108,22 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType }) => 
       setIsGenerating(false);
       setLoadingStep('');
     }
+  };
+
+  const handleSaveToKB = () => {
+    if (blocks.length === 0 || !onSaveToKB) return;
+    const fullScript = blocks.map(b => `${b.episodes}\n${b.content}`).join('\n\n---\n\n');
+    const source = files.find(f => f.id === sourceId);
+    
+    const newFile: KBFile = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: `[改编剧本] ${source?.name || '未命名'}`,
+      category: Category.PLOT,
+      content: fullScript,
+      uploadDate: new Date().toISOString()
+    };
+    onSaveToKB(newFile);
+    setSaveStatus(true);
   };
 
   const handleProofread = async (block: ScriptBlock) => {
@@ -190,11 +210,22 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType }) => 
                   {files.filter(f => f.category === Category.REFERENCE).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                </select>
              </div>
-             <div className="flex flex-col justify-end">
-               <button disabled={isGenerating || !sourceId} onClick={() => handleGenerate()} className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 text-white rounded-2xl px-6 py-2.5 font-black text-[10px] uppercase transition-all flex items-center gap-2 shadow-xl shadow-blue-900/40">
-                 {isGenerating ? <div className="animate-spin">{ICONS.Refresh}</div> : ICONS.Sparkles}
-                 {isGenerating ? "改编中..." : blocks.length === 0 ? "开始改编" : "续写单元"}
-               </button>
+             <div className="flex flex-col justify-end gap-2">
+               <div className="flex gap-2">
+                 <button disabled={isGenerating || !sourceId} onClick={() => handleGenerate()} className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 text-white rounded-2xl px-6 py-2.5 font-black text-[10px] uppercase transition-all flex items-center gap-2 shadow-xl shadow-blue-900/40">
+                   {isGenerating ? <div className="animate-spin">{ICONS.Refresh}</div> : ICONS.Sparkles}
+                   {isGenerating ? "改编中..." : blocks.length === 0 ? "开始改编" : "续写单元"}
+                 </button>
+                 {blocks.length > 0 && (
+                   <button 
+                     onClick={handleSaveToKB} 
+                     disabled={saveStatus}
+                     className={`rounded-2xl px-6 py-2.5 font-black text-[10px] uppercase transition-all shadow-xl border ${saveStatus ? 'bg-emerald-500 border-emerald-400 text-white' : 'bg-white/5 border-white/10 text-white hover:bg-white/10'}`}
+                   >
+                     {saveStatus ? "✓ 已同步资料库" : "保存剧本全案"}
+                   </button>
+                 )}
+               </div>
              </div>
           </div>
         </div>
@@ -221,7 +252,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType }) => 
                    </div>
                    <div className="flex gap-2 opacity-0 group-hover/block:opacity-100 transition-all">
                      <button onClick={() => handleGenerate(idx + 1)} className="bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 rounded-xl text-[9px] font-black uppercase text-slate-400 flex items-center gap-2">
-                        {ICONS.Refresh} 重新生成单元
+                        {ICONS.Refresh} 重新生成 (不满意)
                      </button>
                      <button onClick={() => handleProofread(block)} className="bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-600/20 px-4 py-2 rounded-xl text-[9px] font-black uppercase text-emerald-400 flex items-center gap-2">
                         {ICONS.Refine} AI 校对

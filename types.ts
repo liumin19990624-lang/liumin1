@@ -69,6 +69,7 @@ export enum WorkspaceTab {
   SCRIPT = 'SCRIPT',
   OUTLINE = 'OUTLINE',
   VISUALS = 'VISUALS',
+  SHOTS = 'SHOTS',
 }
 
 export enum AudienceMode {
