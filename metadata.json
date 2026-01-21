@@ -1,7 +1,26 @@
 {
-  "name": "漫剧剧本智能适配大师 Pro",
-  "description": "极速 2D 动漫改编智能体。直接集成 Gemini 3 Flash SDK，支持本地化持久存储。",
+  "name": "ANIME ENGINE v3.8",
+  "short_name": "ANIME ENGINE",
+  "description": "专业级漫剧剧本智能创作平台 - 集成 DMXAPI 驱动，支持小说改编、大纲生成、分镜设计、角色创作、Word 导出，本地持久化存储，一站式工业化漫剧生产工具",
+  "version": "3.8.0",
+  "manifest_version": 3,
   "requestFramePermissions": [
     "microphone"
-  ]
+  ],
+  "icons": {
+    "16": "icons/icon-16x16.png",
+    "48": "icons/icon-48x48.png",
+    "128": "icons/icon-128x128.png"
+  },
+  "author": "ANIME ENGINE Team",
+  "homepage_url": "https://github.com/your-repo/anime-engine",
+  "permissions": [
+    "storage",
+    "unlimitedStorage"
+  ],
+  "offline_enabled": true,
+  "background_color": "#0a0a0c",
+  "theme_color": "#3b82f6",
+  "display": "standalone",
+  "orientation": "portrait-primary"
 }
