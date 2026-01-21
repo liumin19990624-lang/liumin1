@@ -19,7 +19,6 @@ export default function Home() {
   
   useEffect(() => {
     const fetchData = async () => {
-      // 即使没有 userId，也需要结束加载状态，否则界面卡死
       if (!userId) {
         setIsLoading(false);
         return;
@@ -77,12 +76,35 @@ export default function Home() {
     }
   }, [userId]);
 
-  const handleFileUpload = (newFiles: KBFile[]) => {
-    setFiles(prev => [...newFiles, ...prev]);
+  const handleFileUpload = async (newFiles: KBFile[]) => {
+    const savedResults: KBFile[] = [];
+    for (const file of newFiles) {
+      try {
+        const res = await fetch('/api/kb', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(file)
+        });
+        if (res.ok) {
+          const savedFile = await res.json();
+          savedResults.push(savedFile);
+        }
+      } catch (e) {
+        console.error("Upload failed", e);
+      }
+    }
+    setFiles(prev => [...savedResults, ...prev]);
   };
 
-  const handleDeleteFile = (id: string) => {
-    setFiles(prev => prev.filter(f => f.id !== id));
+  const handleDeleteFile = async (id: string) => {
+    try {
+      const res = await fetch(`/api/kb?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setFiles(prev => prev.filter(f => f.id !== id));
+      }
+    } catch (e) {
+      console.error("Delete failed", e);
+    }
   };
 
   return (
@@ -159,7 +181,7 @@ export default function Home() {
           </div>
         ) : (
           <div className="animate-fade-up h-full">
-            <Workspace files={files} />
+            <Workspace files={files} onUpdateFiles={handleFileUpload} />
           </div>
         )}
       </main>

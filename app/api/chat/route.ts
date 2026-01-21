@@ -41,19 +41,23 @@ export async function POST(req: NextRequest) {
         config: {
           ...config,
           systemInstruction,
-          thinkingConfig: { thinkingBudget: 0 } // Optimization for latency
         },
       });
 
       const encoder = new TextEncoder();
       const stream = new ReadableStream({
         async start(controller) {
-          for await (const chunk of response) {
-            // Correctly access the .text property of GenerateContentResponse chunk
-            const text = chunk.text;
-            if (text) controller.enqueue(encoder.encode(text));
+          try {
+            for await (const chunk of response) {
+              // Access .text property directly
+              const text = chunk.text;
+              if (text) controller.enqueue(encoder.encode(text));
+            }
+          } catch (e: any) {
+            console.error("Stream generation internal error:", e);
+          } finally {
+            controller.close();
           }
-          controller.close();
         },
       });
 
@@ -65,14 +69,19 @@ export async function POST(req: NextRequest) {
         config: { 
           ...config, 
           systemInstruction, 
-          thinkingConfig: { thinkingBudget: 0 } 
         },
       });
-      // Correctly access the .text property of GenerateContentResponse
       return NextResponse.json({ text: response.text });
     }
   } catch (error: any) {
     console.error("Chat API Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // Return a clean JSON error response that matches the user's reported format
+    return NextResponse.json({ 
+      error: {
+        code: 500,
+        message: error.message || "Gemini API failure",
+        status: "INTERNAL"
+      }
+    }, { status: 500 });
   }
 }

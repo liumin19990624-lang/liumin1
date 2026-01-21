@@ -67,7 +67,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ files, onUpdateFiles }) => {
         <div className="flex-1 min-h-0 flex flex-col">
           {activeTab === WorkspaceTab.SCRIPT && <ScriptPanel files={files} mode={mode} modelType={ModelType.FLASH} />}
           {activeTab === WorkspaceTab.OUTLINE && <OutlinePanel files={files} onSaveToKB={(f) => onUpdateFiles?.([f])} />}
-          {activeTab === WorkspaceTab.VISUALS && <CharacterVisuals mode={mode} />}
+          {activeTab === WorkspaceTab.VISUALS && <CharacterVisuals mode={mode} files={files} onSaveToKB={(f) => onUpdateFiles?.([f])} />}
         </div>
       </section>
     </div>
