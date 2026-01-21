@@ -7,23 +7,59 @@
     "lib": [
       "ES2022",
       "DOM",
-      "DOM.Iterable"
+      "DOM.Iterable",
+      "ESNext.Array" // 补充数组扩展方法类型
     ],
     "skipLibCheck": true,
     "types": [
-      "node"
+      "node",
+      "vite/client" // 补充 Vite 客户端类型（如 import.meta.env）
     ],
     "moduleResolution": "bundler",
     "isolatedModules": true,
     "moduleDetection": "force",
     "allowJs": true,
+    "checkJs": false, // 不检查 JS 文件（避免第三方依赖报错）
     "jsx": "react-jsx",
+    "jsxImportSource": "react", // 明确 JSX 导入源（适配 React 19）
     "paths": {
       "@/*": [
-        "./*"
+        "./src/*" // 修正路径别名（项目源码通常在 src 目录）
       ]
     },
     "allowImportingTsExtensions": true,
-    "noEmit": true
-  }
+    "noEmit": true,
+    // 增强类型检查（提升代码质量）
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictPropertyInitialization": false, // 宽松处理类属性初始化（React 组件常用）
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    // 模块相关配置
+    "resolveJsonModule": true, // 支持导入 JSON 文件
+    "esModuleInterop": true, // 兼容 CommonJS 模块导入
+    "forceConsistentCasingInFileNames": true, // 强制文件名大小写一致（跨平台兼容）
+    "verbatimModuleSyntax": false // 兼容 Vite 模块处理
+  },
+  "include": [
+    "src/**/*", // 包含 src 目录下所有 TS/TSX 文件
+    "src/types/**/*", // 包含类型定义文件
+    "vite.config.ts", // 包含 Vite 配置文件
+    "*.d.ts" // 包含根目录声明文件
+  ],
+  "exclude": [
+    "node_modules", // 排除依赖目录
+    "dist", // 排除构建产物目录
+    "coverage", // 排除测试覆盖率目录
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
+  ],
+  "references": []
 }
