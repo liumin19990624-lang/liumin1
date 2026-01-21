@@ -23,14 +23,22 @@ export class GeminiService {
   async *generateTechnicalShotListStream(scriptContent: string, referenceContent: string = "") {
     const ai = this.getAI();
     const prompt = `
-    任务：【动漫工业级分镜表转化】
-    请将以下剧本内容转化为标准的动漫分镜表。
+    任务：【专业动画分镜脚本 (Vidu 优化版) 转化】
+    请将以下剧本内容转化为工业级分镜表，特别针对视频生成模型 Vidu 进行提示词优化。
     
     输出要求：
-    1. 每一行代表一个镜头。
-    2. 严格遵循格式：[镜头号] | [景别/运动] | [画面描述] | [对白/声效]
-    3. 景别必须包含：特写(CU)、中景(MS)、全景(WS)、俯冲(Tilt)、平移(Pan)等专业术语。
-    ${referenceContent ? `4. 格式与术语参考模板（模仿其颗粒度和排版）：\n${referenceContent.substring(0, 2000)}` : "4. 确保镜头逻辑连贯，动作感强。"}
+    1. 每一行代表一个镜头，必须严格按照以下 6 列格式输出，使用 | 分隔：
+       镜号 | 时长 | 视听语言 | 画面描述 | 原著台词 | Vidu 一致性提示词
+    
+    2. 字段详细规范：
+       - 镜号：纯数字。
+       - 时长：格式为 "X.0s"，根据动作复杂度评估。
+       - 视听语言：包含“景别 / 运动”，如“全景 / 仰拍推近”、“特写 / 俯拍旋转”。
+       - 画面描述：详细描述视觉元素。
+       - 原著台词：台词或音效描述。
+       - Vidu 一致性提示词：必须使用方括号格式，如 [2D动漫风格][背景描述][角色描述][镜头运动][氛围/特效细节]。
+    
+    ${referenceContent ? `3. 参考模板风格：\n${referenceContent.substring(0, 2000)}` : "3. 确保镜头节奏感强，符合 2D 动漫视听语言。"}
     
     剧本内容：
     ${scriptContent}
@@ -39,7 +47,7 @@ export class GeminiService {
       model: 'gemini-3-flash-preview',
       contents: [{ parts: [{ text: prompt }] }],
       config: { 
-        systemInstruction: "你是一位拥有 20 年经验的动漫分镜导演，擅长拆解镜头节奏。",
+        systemInstruction: "你是一位资深的动画导演和 Vidu 提示词专家，擅长将文字剧本转化为精确的视觉生产指令。",
         temperature: 0.7 
       },
     });
