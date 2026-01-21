@@ -1,40 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI, GenerateVideosOperation } from "@google/genai";
 import { auth } from "@clerk/nextjs/server";
 import { supabase, supabaseHelpers } from "../../../lib/supabase";
 import { z } from 'zod';
 
 // ============================
-// 核心配置（直接集成你的 API 密钥）
+// 核心配置（DMXAPI 地址+密钥，强制集成）
 // ============================
-const CONFIG = {
-  // 你的 DMXAPI 密钥（安全存储在后端，前端不可见）
-  API_KEY: "sk-56iBqzyCSBRB17iQSW2MILO0d1P2UgC8miT6BbvoEvPYI5Nw",
-  // 视频生成配置
-  VIDEO_GENERATION_COST: 5,
-  GOOGLE_VEO_MODEL: 'veo-3.1-fast-generate-preview',
-  DEFAULT_VIDEO_CONFIG: {
-    numberOfVideos: 1,
-    resolution: '720p' as const,
-    aspectRatio: '16:9' as const,
-  },
-  MAX_PROMPT_LENGTH: 1000,
-  MIN_PROMPT_LENGTH: 10,
+const DMXAPI_CONFIG = {
+  BASE_URL: "https://www.dmxapi.cn", // 你的 DMXAPI 基础地址（从截图提取）
+  API_KEY: "sk-56iBqzyCSBRB17iQSW2MILO0d1P2UgC8miT6BbvoEvPYI5Nw", // 你的密钥
+  VIDEO_GENERATE_ENDPOINT: "/v1/videos/generate", // DMXAPI 视频生成接口
+  VIDEO_STATUS_ENDPOINT: "/v1/videos/status", // DMXAPI 视频状态查询接口
 };
 
-// 校验 API 密钥是否配置
-if (!CONFIG.API_KEY) {
-  console.error("❌ API 密钥未配置，请检查 CONFIG.API_KEY");
+const APP_CONFIG = {
+  VIDEO_GENERATION_COST: 5, // 每次生成消耗 5 积分
+  MAX_PROMPT_LENGTH: 1000, // 最大提示词长度
+  MIN_PROMPT_LENGTH: 10, // 最小提示词长度
+  DEFAULT_VIDEO_CONFIG: {
+    resolution: "720p",
+    aspectRatio: "16:9",
+    numberOfVideos: 1,
+  },
+};
+
+// 校验配置有效性
+if (!DMXAPI_CONFIG.BASE_URL || !DMXAPI_CONFIG.API_KEY) {
+  console.error("❌ DMXAPI 配置不完整（基础地址或密钥缺失）");
 }
 
 // ============================
 // 类型定义与请求验证 Schema
 // ============================
+// 视频生成请求体校验
 const VideoGenerationSchema = z.object({
   image: z.string().min(1, "图片数据不能为空（请提供 base64 编码）"),
   prompt: z.string()
-    .min(CONFIG.MIN_PROMPT_LENGTH, `提示词不能少于 ${CONFIG.MIN_PROMPT_LENGTH} 个字符`)
-    .max(CONFIG.MAX_PROMPT_LENGTH, `提示词不能超过 ${CONFIG.MAX_PROMPT_LENGTH} 个字符`),
+    .min(APP_CONFIG.MIN_PROMPT_LENGTH, `提示词不能少于 ${APP_CONFIG.MIN_PROMPT_LENGTH} 个字符`)
+    .max(APP_CONFIG.MAX_PROMPT_LENGTH, `提示词不能超过 ${APP_CONFIG.MAX_PROMPT_LENGTH} 个字符`),
 });
 
 // 统一响应工具
@@ -49,11 +52,42 @@ const ApiResponse = {
 };
 
 // ============================
-// 工具函数：初始化 Google GenAI 客户端（强制使用你的密钥）
+// 工具函数：DMXAPI 请求封装
 // ============================
-const getGoogleGenAIClient = (): GoogleGenAI | null => {
-  if (!CONFIG.API_KEY) return null;
-  return new GoogleGenAI({ apiKey: CONFIG.API_KEY });
+const requestDMXAPI = async <T>(
+  endpoint: string,
+  method: "POST" | "GET",
+  data?: Record<string, any>
+): Promise<T> => {
+  const url = `${DMXAPI_CONFIG.BASE_URL}${endpoint}`;
+  const options: RequestInit = {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${DMXAPI_CONFIG.API_KEY}`, // 你的密钥安全传递
+    },
+  };
+
+  // GET 请求拼接参数，POST 请求传 body
+  if (method === "POST" && data) {
+    options.body = JSON.stringify(data);
+  } else if (method === "GET" && data) {
+    const params = new URLSearchParams(data as Record<string, string>);
+    url += `?${params.toString()}`;
+  }
+
+  const response = await fetch(url, options);
+  const responseData = await response.json().catch(() => ({}));
+
+  // 处理 DMXAPI 错误
+  if (!response.ok) {
+    throw new Error(
+      responseData.error?.message || 
+      `DMXAPI 请求失败（状态码：${response.status}）`
+    );
+  }
+
+  return responseData as T;
 };
 
 // ============================
@@ -70,18 +104,12 @@ export async function POST(req: NextRequest) {
     const { userId } = auth();
     if (!userId) return ApiResponse.unauthorized();
 
-    // 2. 验证 Supabase 客户端可用性
+    // 2. 验证 Supabase 可用性
     if (!supabaseHelpers.isClientAvailable()) {
       return ApiResponse.serviceUnavailable();
     }
 
-    // 3. 初始化 AI 客户端（使用你的密钥）
-    const ai = getGoogleGenAIClient();
-    if (!ai) {
-      return ApiResponse.error("API 密钥配置错误，无法初始化 AI 客户端");
-    }
-
-    // 4. 解析并验证请求体
+    // 3. 解析并验证请求体
     let requestBody;
     try {
       requestBody = await req.json();
@@ -99,10 +127,10 @@ export async function POST(req: NextRequest) {
 
     const { image: imageBase64, prompt } = validationResult.data;
 
-    // 5. 积分扣减（原子操作）
+    // 4. 积分扣减（原子操作）
     const { data: creditResult, error: creditError } = await supabase.rpc(
       'decrement_credits_safe',
-      { target_user_id: userId, amount: CONFIG.VIDEO_GENERATION_COST }
+      { target_user_id: userId, amount: APP_CONFIG.VIDEO_GENERATION_COST }
     );
 
     if (creditError) {
@@ -113,53 +141,62 @@ export async function POST(req: NextRequest) {
     const creditCheck = creditResult?.[0];
     if (!creditCheck?.success) {
       return ApiResponse.forbidden(
-        `算力点数不足（需要 ${CONFIG.VIDEO_GENERATION_COST} 点，当前剩余 ${creditCheck?.remaining || 0} 点）`
+        `算力点数不足（需要 ${APP_CONFIG.VIDEO_GENERATION_COST} 点，当前剩余 ${creditCheck?.remaining || 0} 点）`
       );
     }
 
-    // 6. Base64 转 Uint8Array（图片数据处理）
-    let imageBytes: Uint8Array;
+    // 5. 处理图片数据（保留 base64 格式，适配 DMXAPI）
+    let pureBase64: string;
     try {
       // 移除 base64 前缀（如果有）
-      const pureBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
-      imageBytes = Uint8Array.from(atob(pureBase64), c => c.charCodeAt(0));
+      pureBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+      // 验证 base64 有效性
+      atob(pureBase64);
     } catch (err) {
       console.error("[图片解析失败]", err);
       // 解析失败，退还积分
       await supabase.rpc('increment_credits_safe', {
         target_user_id: userId,
-        amount: CONFIG.VIDEO_GENERATION_COST
+        amount: APP_CONFIG.VIDEO_GENERATION_COST
       }).catch(e => console.error("[积分退还失败]", e));
       return ApiResponse.badRequest("图片数据无效，请提供标准 base64 编码");
     }
 
-    // 7. 调用 Google Veo 生成视频（使用你的 API 密钥）
-    let operation: GenerateVideosOperation;
+    // 6. 调用 DMXAPI 发起视频生成
     try {
-      operation = await ai.models.generateVideos({
-        model: CONFIG.GOOGLE_VEO_MODEL,
-        prompt: prompt.trim(),
-        image: {
-          imageBytes: imageBytes,
-          mimeType: 'image/png',
-        },
-        config: CONFIG.DEFAULT_VIDEO_CONFIG,
+      const dmxResponse = await requestDMXAPI<{ task_id: string }>(
+        DMXAPI_CONFIG.VIDEO_GENERATE_ENDPOINT,
+        "POST",
+        {
+          prompt: prompt.trim(),
+          image_base64: pureBase64, // DMXAPI 接收 base64 图片
+          resolution: APP_CONFIG.DEFAULT_VIDEO_CONFIG.resolution,
+          aspect_ratio: APP_CONFIG.DEFAULT_VIDEO_CONFIG.aspectRatio,
+          number_of_videos: APP_CONFIG.DEFAULT_VIDEO_CONFIG.numberOfVideos,
+        }
+      );
+
+      // DMXAPI 返回任务 ID（用于查询状态）
+      if (!dmxResponse.task_id) {
+        throw new Error("DMXAPI 未返回有效任务 ID");
+      }
+
+      // 7. 返回成功响应
+      return ApiResponse.success({
+        operationId: dmxResponse.task_id, // 与原接口返回字段一致，兼容前端
+        message: `视频生成任务已提交，消耗 ${APP_CONFIG.VIDEO_GENERATION_COST} 算力点数`,
+        creditsRemaining: creditCheck.remaining || 0,
       });
+
     } catch (error: any) {
-      console.error("[视频生成失败]", error);
+      console.error("[DMXAPI 视频生成失败]", error);
       // 生成失败，自动退还积分
       await supabase.rpc('increment_credits_safe', {
         target_user_id: userId,
-        amount: CONFIG.VIDEO_GENERATION_COST
+        amount: APP_CONFIG.VIDEO_GENERATION_COST
       }).catch(e => console.error("[积分退还失败]", e));
       return ApiResponse.error(`视频生成失败：${error.message || "未知错误"}`);
     }
-
-    // 8. 返回操作 ID（用于查询状态）
-    return ApiResponse.success({
-      operationId: operation.name,
-      message: `视频生成任务已提交，消耗 ${CONFIG.VIDEO_GENERATION_COST} 算力点数`,
-    });
 
   } catch (error: any) {
     console.error("[Video POST 全局错误]", error);
@@ -173,61 +210,66 @@ export async function POST(req: NextRequest) {
  */
 export async function GET(req: NextRequest) {
   try {
-    // 1. 获取并验证操作 ID
+    // 1. 获取并验证任务 ID
     const { searchParams } = new URL(req.url);
     const operationId = searchParams.get('id');
 
     if (!operationId) {
-      return ApiResponse.badRequest("缺少必要参数：id（操作 ID）");
+      return ApiResponse.badRequest("缺少必要参数：id（任务 ID）");
     }
 
-    // 2. 初始化 AI 客户端（使用你的密钥）
-    const ai = getGoogleGenAIClient();
-    if (!ai) {
-      return ApiResponse.error("API 密钥配置错误，无法查询视频状态");
-    }
-
-    // 3. 查询任务状态
-    let operation: GenerateVideosOperation;
+    // 2. 调用 DMXAPI 查询状态
     try {
-      operation = await ai.operations.getVideosOperation({
-        operation: { name: operationId },
-      });
-    } catch (error: any) {
-      console.error("[状态查询失败]", error);
-      return ApiResponse.error(`查询失败：${error.message || "操作 ID 无效"}`);
-    }
+      const dmxResponse = await requestDMXAPI<{
+        done: boolean;
+        video_url?: string;
+        progress?: number;
+        duration_ms?: number;
+        error?: string;
+      }>(
+        DMXAPI_CONFIG.VIDEO_STATUS_ENDPOINT,
+        "GET",
+        { task_id: operationId } // DMXAPI 接收任务 ID 参数
+      );
 
-    // 4. 处理查询结果
-    if (operation.done) {
-      const generatedVideo = operation.response?.generatedVideos?.[0];
-      
-      if (!generatedVideo || !generatedVideo.video?.uri) {
-        return ApiResponse.error("视频生成完成，但未返回有效视频链接");
+      // 处理 DMXAPI 返回的错误
+      if (dmxResponse.error) {
+        throw new Error(dmxResponse.error);
       }
 
-      // 构建带密钥的视频 URL（直接使用你的 API 密钥）
-      const videoUrl = new URL(generatedVideo.video.uri);
-      videoUrl.searchParams.set('key', CONFIG.API_KEY);
+      if (dmxResponse.done) {
+        // 生成完成：验证视频 URL
+        if (!dmxResponse.video_url) {
+          return ApiResponse.error("视频生成完成，但未返回有效视频链接");
+        }
 
-      return ApiResponse.success({
-        done: true,
-        videoUrl: videoUrl.toString(),
-        metadata: {
-          resolution: CONFIG.DEFAULT_VIDEO_CONFIG.resolution,
-          aspectRatio: CONFIG.DEFAULT_VIDEO_CONFIG.aspectRatio,
-          duration: generatedVideo.video.durationMs 
-            ? `${(generatedVideo.video.durationMs / 1000).toFixed(1)}s` 
-            : "未知时长",
-        },
-      });
-    } else {
-      // 返回生成进度（0-100）
-      return ApiResponse.success({
-        done: false,
-        progress: operation.metadata?.progress || 0,
-        message: "视频正在渲染中，请稍后再查",
-      });
+        // 构建带密钥的视频 URL（如果 DMXAPI 需要）
+        const videoUrl = new URL(dmxResponse.video_url);
+        videoUrl.searchParams.set('key', DMXAPI_CONFIG.API_KEY);
+
+        return ApiResponse.success({
+          done: true,
+          videoUrl: videoUrl.toString(),
+          metadata: {
+            resolution: APP_CONFIG.DEFAULT_VIDEO_CONFIG.resolution,
+            aspectRatio: APP_CONFIG.DEFAULT_VIDEO_CONFIG.aspectRatio,
+            duration: dmxResponse.duration_ms 
+              ? `${(dmxResponse.duration_ms / 1000).toFixed(1)}s` 
+              : "未知时长",
+          },
+        });
+      } else {
+        // 生成中：返回进度
+        return ApiResponse.success({
+          done: false,
+          progress: dmxResponse.progress || 0, // 0-100 进度百分比
+          message: "视频正在渲染中，请稍后再查",
+        });
+      }
+
+    } catch (error: any) {
+      console.error("[DMXAPI 状态查询失败]", error);
+      return ApiResponse.error(`查询失败：${error.message || "任务 ID 无效"}`);
     }
 
   } catch (error: any) {
