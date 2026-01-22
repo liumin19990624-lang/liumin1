@@ -1,84 +1,17 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { KBFile, Category, AudienceMode, ScriptBlock, ModelType, DirectorStyle, TropeType } from '../types';
-import { ICONS } from '../constants';
-import { GeminiService } from '../services/geminiService';
-import { toast } from '../components/Toast'; // 导入 Toast 组件
 
-// 定义导演风格配置
-interface DirectorStyleConfig {
-  label: string;
-  description: string;
-}
-
-// 定义桥段类型配置
-interface TropeTypeConfig {
-  label: string;
-  description: string;
-}
-
-// 导演风格配置（统一管理）
-const DIRECTOR_STYLE_CONFIGS: Record<DirectorStyle, DirectorStyleConfig> = {
-  [DirectorStyle.UFOTABLE]: {
-    label: 'ufotable',
-    description: '光影华丽，打斗流畅，细节丰富，适合奇幻战斗题材'
-  },
-  [DirectorStyle.MAPPA]: {
-    label: 'MAPPA',
-    description: '画面张力强，色彩对比鲜明，适合暗黑系题材'
-  },
-  [DirectorStyle.BONES]: {
-    label: 'BONES',
-    description: '画风细腻，情感表达丰富，适合日常与战斗结合题材'
-  },
-  [DirectorStyle.PRODUCTION_I_G]: {
-    label: 'Production I.G',
-    description: '制作精良，写实风格，适合悬疑推理题材'
-  },
-  [DirectorStyle.TRIGGER]: {
-    label: 'TRIGGER',
-    description: '风格夸张，充满活力，适合热血搞笑题材'
-  }
-};
-
-// 桥段类型配置（统一管理）
-const TROPE_TYPE_CONFIGS: Record<TropeType, TropeTypeConfig> = {
-  [TropeType.FACE_SLAP]: {
-    label: '打脸反转',
-    description: '主角被轻视后展现实力，打脸对手的经典桥段'
-  },
-  [TropeType.CRISIS]: {
-    label: '危机爆发',
-    description: '突发危机事件，推动剧情进入高潮'
-  },
-  [TropeType.REVELATION]: {
-    label: '真相揭露',
-    description: '隐藏的真相被揭开，颠覆之前的认知'
-  },
-  [TropeType.BONDING]: {
-    label: '情感羁绊',
-    description: '角色之间建立深厚情感，增强团队凝聚力'
-  },
-  [TropeType.GROWTH]: {
-    label: '成长蜕变',
-    description: '主角经历挫折后获得成长，突破自身极限'
-  }
-};
+import React, { useState, useEffect, useMemo } from 'react';
+import { KBFile, Category, AudienceMode, ScriptBlock, ModelType, DirectorStyle, TropeType } from '../types.ts';
+import { ICONS } from '../constants.tsx';
+import { GeminiService } from '../services/geminiService.ts';
 
 interface ScriptPanelProps {
   files: KBFile[];
   mode: AudienceMode;
   modelType: ModelType;
   onSaveToKB?: (f: KBFile) => void;
-  className?: string;
 }
 
-const ScriptPanel: React.FC<ScriptPanelProps> = ({
-  files,
-  mode,
-  modelType,
-  onSaveToKB,
-  className = '',
-}) => {
+const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType, onSaveToKB }) => {
   const [sourceId, setSourceId] = useState<string>('');
   const [refFileId, setRefFileId] = useState<string>('');
   const [isSelectionActive, setIsSelectionActive] = useState(false);
@@ -91,628 +24,290 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   const [currentGeneratingIdx, setCurrentGeneratingIdx] = useState<number | null>(null);
   const [streamingText, setStreamingText] = useState('');
   const [savedStatus, setSavedStatus] = useState<Record<string, boolean>>({});
-  const [errorMessage, setErrorMessage] = useState<string>('');
-  const [activeBlockId, setActiveBlockId] = useState<string | null>(null); // 新增：当前激活的剧本块
-
-  // 初始化 Gemini 服务（缓存实例）
+  
   const gemini = useMemo(() => new GeminiService(), []);
 
-  // 筛选可用的源文件（剧情类和大纲类）
-  const sourceFiles = useMemo(
-    () => files.filter(f => f.category === Category.PLOT || f.category === Category.REFERENCE),
-    [files]
-  );
-
-  // 筛选参考文件（排除当前选中的源文件）
-  const referenceFiles = useMemo(
-    () => files.filter(f => f.id !== sourceId && (f.category === Category.PLOT || f.category === Category.REFERENCE || f.category === Category.CHARACTER)),
-    [files, sourceId]
-  );
-
-  // 持久化存储 - 加载剧本块
+  // 加载持久化数据
   useEffect(() => {
     if (sourceId) {
       const saved = localStorage.getItem(`script_blocks_v12_${sourceId}`);
       if (saved) {
         try {
-          const parsedBlocks = JSON.parse(saved) as ScriptBlock[];
-          setBlocks(parsedBlocks);
-          
-          // 恢复保存状态
-          const savedStatus = parsedBlocks.reduce((acc, block) => {
-            acc[block.id] = false;
-            return acc;
-          }, {} as Record<string, boolean>);
-          setSavedStatus(savedStatus);
+          setBlocks(JSON.parse(saved));
         } catch (e) {
-          console.error('加载剧本块失败：', e);
           setBlocks([]);
-          setSavedStatus({});
-          toast.error('加载历史剧本失败，已重置');
         }
-      } else {
-        setBlocks([]);
-        setSavedStatus({});
-      }
-    } else {
-      setBlocks([]);
-      setSavedStatus({});
-      setActiveBlockId(null);
+      } else setBlocks([]);
     }
   }, [sourceId]);
 
-  // 持久化存储 - 保存剧本块
+  // 同步本地存储
   useEffect(() => {
-    if (sourceId && blocks.length > 0) {
+    if (sourceId && blocks.length >= 0) {
       localStorage.setItem(`script_blocks_v12_${sourceId}`, JSON.stringify(blocks));
     }
   }, [blocks, sourceId]);
 
-  // 清理流式文本的防抖处理
-  const debouncedCleanText = useCallback((text: string) => {
-    return GeminiService.cleanText(text);
-  }, []);
-
-  // 核心生成函数：生成单个剧本块
-  const executeGeneration = useCallback(async (
-    currentBlocks: ScriptBlock[],
-    targetIdx?: number
-  ): Promise<ScriptBlock | null> => {
+  // 单集生成逻辑封装
+  const executeSingleGeneration = async (existingBlocks: ScriptBlock[], targetIdx?: number) => {
     const isRegen = targetIdx !== undefined;
-    const currentIdx = isRegen ? targetIdx : currentBlocks.length + 1;
+    const currentIdx = isRegen ? targetIdx : existingBlocks.length + 1;
+    
     setCurrentGeneratingIdx(currentIdx);
     setStreamingText('');
-    setErrorMessage('');
 
     try {
       const source = files.find(f => f.id === sourceId);
       const refFile = files.find(f => f.id === refFileId);
-
-      if (!source) {
-        throw new Error("源文件不存在");
-      }
-
-      if (!source.content.trim()) {
-        throw new Error("源文件内容为空");
-      }
+      if (!source) throw new Error("Missing Source");
 
       let fullContent = '';
-      // 生成剧本块流
       const stream = gemini.generateScriptBlockStream(
-        mode,
-        source.content,
-        currentBlocks.slice(0, currentIdx - 1),
-        currentIdx,
-        modelType,
-        directorStyle,
-        trope,
+        mode, 
+        source.content, 
+        existingBlocks.slice(0, currentIdx - 1), 
+        currentIdx, 
+        modelType, 
+        directorStyle, 
+        trope, 
         refFile?.content || ''
       );
 
-      // 处理流式响应
       for await (const chunk of stream) {
         fullContent += chunk;
-        const cleanedText = debouncedCleanText(fullContent);
-        setStreamingText(cleanedText);
+        setStreamingText(GeminiService.cleanText(fullContent)); 
       }
-
-      const cleanedContent = debouncedCleanText(fullContent);
-      if (!cleanedContent.trim()) {
-        throw new Error("生成的剧本内容为空");
-      }
-
-      return {
-        id: isRegen ? currentBlocks[targetIdx - 1].id : Math.random().toString(36).substr(2, 9),
+      
+      const cleaned = GeminiService.cleanText(fullContent);
+      const result: ScriptBlock = {
+        id: isRegen ? existingBlocks[targetIdx - 1].id : Math.random().toString(36).substr(2, 9),
         sourceId: sourceId,
         episodes: `第 ${currentIdx} 集剧本`,
-        content: cleanedContent,
-        continuityStatus: `改编完成 | ${cleanedContent.length} 字`,
+        content: cleaned,
+        continuityStatus: `改编完成 | ${cleaned.length} 字`,
         style: directorStyle,
         trope: trope
       };
-
-    } catch (e: any) {
-      console.error("剧本生成失败：", e);
-      const errorMsg = e.message || "剧本生成异常，请稍后重试";
-      setErrorMessage(errorMsg);
-      toast.error(errorMsg);
+      return result;
+    } catch (e) {
+      console.error(e);
       return null;
     } finally {
       setStreamingText('');
       setCurrentGeneratingIdx(null);
     }
-  }, [mode, sourceId, refFileId, modelType, directorStyle, trope, files, gemini, debouncedCleanText]);
+  };
 
-  // 生成下一个剧本块
-  const handleGenerateNext = useCallback(async (targetIdx?: number) => {
-    if (!sourceId) {
-      toast.warning("请先选择待改编的小说原著");
-      return;
-    }
-
-    if (isGenerating) {
-      toast.warning("正在生成中，请稍后再试");
-      return;
-    }
-
+  const handleGenerateNext = async (targetIdx?: number) => {
+    if (!sourceId) { alert("请先选择原著"); return; }
     setIsGenerating(true);
-    const result = await executeGeneration(blocks, targetIdx);
-
+    
+    const result = await executeSingleGeneration(blocks, targetIdx);
     if (result) {
       if (targetIdx !== undefined) {
-        // 重新生成指定剧本块
-        const newBlocks = [...blocks];
-        newBlocks[targetIdx - 1] = result;
-        setBlocks(newBlocks);
+        setBlocks(prev => {
+          const next = [...prev];
+          next[targetIdx - 1] = result;
+          return next;
+        });
         setSavedStatus(prev => ({ ...prev, [result.id]: false }));
-        toast.success(`第 ${targetIdx} 集剧本重新生成成功`);
       } else {
-        // 生成新的剧本块
         setBlocks(prev => [...prev, result]);
-        setActiveBlockId(result.id);
-        toast.success(`第 ${blocks.length + 1} 集剧本生成成功`);
       }
     }
-
     setIsGenerating(false);
-  }, [sourceId, isGenerating, blocks, executeGeneration]);
+  };
 
-  // 批量生成剧本块
-  const handleBatchGenerate = useCallback(async () => {
-    if (!sourceId) {
-      toast.warning("请先选择待改编的小说原著");
-      return;
-    }
-
-    if (isGenerating) {
-      toast.warning("正在生成中，请稍后再试");
-      return;
-    }
-
-    if (batchCount < 1 || batchCount > 5) {
-      toast.warning("批量生成数量请限制在 1-5 集");
-      return;
-    }
-
+  const handleBatchGenerate = async () => {
+    if (!sourceId) { alert("请先选择原著"); return; }
     setIsGenerating(true);
-    let successCount = 0;
-
-    try {
-      for (let i = 0; i < batchCount; i++) {
-        const targetIdx = blocks.length + 1;
-        const result = await executeGeneration(blocks, undefined);
-        
-        if (result) {
-          setBlocks(prev => [...prev, result]);
-          successCount++;
-        } else {
-          toast.error(`第 ${targetIdx} 集剧本生成失败，已终止批量生成`);
-          break;
-        }
+    
+    let currentBlocks = [...blocks];
+    for (let i = 0; i < batchCount; i++) {
+      const result = await executeSingleGeneration(currentBlocks);
+      if (result) {
+        currentBlocks = [...currentBlocks, result];
+        setBlocks(currentBlocks);
+      } else {
+        alert(`第 ${currentBlocks.length + 1} 集生成中断`);
+        break;
       }
-
-      toast.success(`批量生成完成，成功生成 ${successCount} 集剧本`);
-    } catch (e) {
-      console.error("批量生成失败：", e);
-      toast.error("批量生成异常，请稍后重试");
-    } finally {
-      setIsGenerating(false);
     }
-  }, [sourceId, isGenerating, blocks, batchCount, executeGeneration]);
+    setIsGenerating(false);
+    setBatchCount(1);
+  };
 
-  // 保存剧本块到知识库
-  const handleSaveBlock = useCallback((block: ScriptBlock) => {
-    if (!onSaveToKB) {
-      toast.warning("保存功能未启用");
-      return;
-    }
-
-    const sourceFile = files.find(f => f.id === sourceId);
-    const sourceFileName = sourceFile?.name || '未知文件';
-
+  const saveBlockToKB = (block: ScriptBlock) => {
+    if (savedStatus[block.id]) return;
     const newFile: KBFile = {
-      id: block.id,
-      name: `${block.episodes} - ${sourceFileName}`,
-      category: Category.REFERENCE,
+      id: Math.random().toString(36).substr(2, 9),
+      name: `[改编剧本] ${block.episodes} - ${files.find(f => f.id === sourceId)?.name}`,
+      category: Category.PLOT,
       content: block.content,
-      uploadDate: new Date().toISOString(),
-      fileSize: block.content.length,
-      fileType: 'text/plain',
-      lastModified: new Date().toISOString(),
-      isFavorite: false,
+      uploadDate: new Date().toISOString()
     };
-
-    onSaveToKB(newFile);
+    onSaveToKB?.(newFile);
     setSavedStatus(prev => ({ ...prev, [block.id]: true }));
-    toast.success(`${block.episodes} 已保存到知识库`);
-  }, [sourceId, files, onSaveToKB]);
+  };
 
-  // 删除剧本块
-  const handleDeleteBlock = useCallback((blockId: string, index: number) => {
-    if (window.confirm("确定要删除该剧本块吗？此操作不可恢复。")) {
-      const newBlocks = blocks.filter(block => block.id !== blockId);
-      setBlocks(newBlocks);
-      setSavedStatus(prev => {
-        const newStatus = { ...prev };
-        delete newStatus[blockId];
-        return newStatus;
-      });
+  const saveAllUnsaved = () => {
+    const unsaved = blocks.filter(b => !savedStatus[b.id]);
+    if (unsaved.length === 0) { alert("所有内容均已同步"); return; }
+    unsaved.forEach(b => saveBlockToKB(b));
+    alert(`成功同步 ${unsaved.length} 集剧本到库`);
+  };
 
-      if (activeBlockId === blockId) {
-        setActiveBlockId(newBlocks.length > 0 ? newBlocks[newBlocks.length - 1].id : null);
-      }
-
-      toast.success(`第 ${index + 1} 集剧本已删除`);
-    }
-  }, [blocks, activeBlockId]);
-
-  // 清空所有剧本块
-  const handleClearAll = useCallback(() => {
-    if (blocks.length === 0) {
-      toast.warning("暂无剧本块可清空");
-      return;
-    }
-
-    if (window.confirm("确定要清空所有剧本块吗？此操作不可恢复。")) {
-      setBlocks([]);
-      setSavedStatus({});
-      setActiveBlockId(null);
-      localStorage.removeItem(`script_blocks_v12_${sourceId}`);
-      toast.success("所有剧本块已清空");
-    }
-  }, [blocks, sourceId]);
-
-  // 切换源文件时重置状态
-  const handleSourceChange = useCallback((newSourceId: string) => {
-    if (sourceId !== newSourceId && blocks.length > 0) {
-      if (!window.confirm("切换源文件将清空当前剧本块，是否继续？")) {
-        return;
-      }
-    }
-    setSourceId(newSourceId);
-    setIsSelectionActive(false);
-    setRefFileId('');
-  }, [sourceId, blocks.length]);
+  const unsavedCount = blocks.filter(b => !savedStatus[b.id]).length;
 
   return (
-    <div className={`flex-1 flex flex-col overflow-hidden bg-[#050508] ${className}`}>
-      {/* 配置面板 */}
-      <div className="h-24 md:h-32 px-6 md:px-10 border-b border-white/5 bg-black/40 backdrop-blur-xl flex flex-col md:flex-row md:items-center justify-between gap-4 z-10">
-        {/* 源文件选择 */}
-        <div className="flex flex-col md:flex-row md:items-center gap-4 flex-1 max-w-xl">
-          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest md:mr-3">
-            源文件
-          </label>
-          <select
-            value={sourceId}
-            onChange={(e) => handleSourceChange(e.target.value)}
-            className="flex-1 p-3 bg-black/40 border border-white/10 text-white rounded-2xl outline-none font-bold text-xs focus:ring-1 focus:ring-blue-500"
-          >
-            <option value="">选择待改编的原著/大纲...</option>
-            {sourceFiles.length > 0 ? (
-              sourceFiles.map(f => (
-                <option key={f.id} value={f.id}>
-                  [{f.category}] {f.name}
-                </option>
-              ))
-            ) : (
-              <option value="" disabled>
-                暂无可用源文件，请先上传
-              </option>
-            )}
-          </select>
-        </div>
-
-        {/* 参考文件选择 */}
-        {sourceId && (
-          <div className="flex flex-col md:flex-row md:items-center gap-4 flex-1 max-w-xl">
-            <label className="text-[10px] font-black text-violet-500 uppercase tracking-widest md:mr-3">
-              参考文件 (可选)
-            </label>
-            <select
-              value={refFileId}
-              onChange={(e) => setRefFileId(e.target.value)}
-              className="flex-1 p-3 bg-black/40 border border-violet-500/20 text-violet-400 rounded-2xl outline-none font-bold text-xs focus:ring-1 focus:ring-violet-500"
-            >
-              <option value="">选择参考剧本/设定...</option>
-              {referenceFiles.length > 0 ? (
-                referenceFiles.map(f => (
-                  <option key={f.id} value={f.id}>
-                    [{f.category}] {f.name}
-                  </option>
-                ))
-              ) : (
-                <option value="" disabled>
-                  暂无可用参考文件
-                </option>
-              )}
-            </select>
-          </div>
-        )}
-      </div>
-
-      {/* 高级配置面板 */}
-      {sourceId && (
-        <div className="px-6 py-4 border-b border-white/5 bg-[#0a0a0c]/50 flex flex-wrap items-center gap-6">
-          {/* 桥段类型选择 */}
-          <div className="flex flex-col md:flex-row md:items-center gap-3 flex-1 min-w-[200px]">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest md:mr-3">
-              核心桥段
-            </label>
-            <select
-              value={trope}
-              onChange={(e) => setTrope(e.target.value as TropeType)}
-              className="flex-1 p-3 bg-black/40 border border-white/10 text-white rounded-2xl outline-none font-bold text-xs focus:ring-1 focus:ring-blue-500"
-            >
-              {Object.entries(TROPE_TYPE_CONFIGS).map(([key, config]) => (
-                <option key={key} value={key}>
-                  {config.label}
-                </option>
-              ))}
-            </select>
-            <span className="text-[9px] text-slate-600 max-w-[200px]">
-              {TROPE_TYPE_CONFIGS[trope].description}
-            </span>
-          </div>
-
-          {/* 导演风格选择 */}
-          <div className="flex flex-col md:flex-row md:items-center gap-3 flex-1 min-w-[200px]">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest md:mr-3">
-              导演风格
-            </label>
-            <select
-              value={directorStyle}
-              onChange={(e) => setDirectorStyle(e.target.value as DirectorStyle)}
-              className="flex-1 p-3 bg-black/40 border border-white/10 text-white rounded-2xl outline-none font-bold text-xs focus:ring-1 focus:ring-blue-500"
-            >
-              {Object.entries(DIRECTOR_STYLE_CONFIGS).map(([key, config]) => (
-                <option key={key} value={key}>
-                  {config.label}
-                </option>
-              ))}
-            </select>
-            <span className="text-[9px] text-slate-600 max-w-[200px]">
-              {DIRECTOR_STYLE_CONFIGS[directorStyle].description}
-            </span>
-          </div>
-
-          {/* 批量生成配置 */}
-          <div className="flex flex-col md:flex-row md:items-center gap-3 flex-1 min-w-[200px]">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest md:mr-3">
-              批量生成
-            </label>
-            <div className="flex items-center gap-3">
-              <input
-                type="number"
-                value={batchCount}
-                onChange={(e) => setBatchCount(Math.max(1, Math.min(5, Number(e.target.value) || 1)))}
-                min="1"
-                max="5"
-                className="w-16 p-3 bg-black/40 border border-white/10 text-white rounded-2xl outline-none font-bold text-xs focus:ring-1 focus:ring-blue-500 text-center"
-              />
-              <span className="text-[10px] text-slate-500">集</span>
-              <button
-                onClick={handleBatchGenerate}
-                disabled={isGenerating || !sourceId}
-                className="px-4 py-2 bg-blue-600/80 hover:bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase transition-all disabled:opacity-30"
-              >
-                批量生成
-              </button>
-            </div>
-          </div>
-
-          {/* 清空按钮 */}
-          <button
-            onClick={handleClearAll}
-            disabled={isGenerating || blocks.length === 0}
-            className="px-4 py-2 bg-rose-600/20 hover:bg-rose-600/30 text-rose-500 border border-rose-600/30 rounded-2xl text-[10px] font-black uppercase transition-all disabled:opacity-30"
-          >
-            {ICONS.Trash} 清空所有
-          </button>
-        </div>
-      )}
-
-      {/* 主内容区 */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* 剧本块列表（左侧） */}
-        {sourceId && (
-          <div className="w-80 border-r border-white/5 overflow-y-auto custom-scrollbar p-4 bg-[#0a0a0c]/50">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                剧本集 ({blocks.length})
-              </h3>
-              <button
-                onClick={() => handleGenerateNext()}
-                disabled={isGenerating}
-                className="px-3 py-1.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1 disabled:opacity-30"
-              >
-                {ICONS.Plus} 新增
-              </button>
+    <div className="flex-1 flex flex-col bg-[#050508] overflow-hidden">
+      {!sourceId || isSelectionActive ? (
+        <div className="flex-1 flex flex-col items-center justify-center p-12 animate-fade-up">
+          <div className="max-w-2xl w-full bg-white/[0.02] border border-white/10 rounded-[4rem] p-16 space-y-12 shadow-2xl backdrop-blur-3xl relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 to-indigo-600"></div>
+            
+            <div className="text-center space-y-4">
+               <div className="w-20 h-20 bg-blue-600 rounded-[2rem] flex items-center justify-center text-white mx-auto shadow-2xl mb-6">
+                 {ICONS.Zap}
+               </div>
+               <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">剧本智能适配 Pro</h2>
+               <p className="text-slate-500 text-sm font-bold uppercase tracking-widest leading-relaxed">
+                 请选择原著及参考文件，系统将基于 industrial 工业标准进行分镜化剧本改编。
+               </p>
             </div>
 
-            {blocks.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-3">
-                {blocks.map((block, index) => (
-                  <div
-                    key={block.id}
-                    onClick={() => setActiveBlockId(block.id)}
-                    className={`p-4 rounded-2xl border cursor-pointer transition-all group ${
-                      activeBlockId === block.id
-                        ? 'bg-blue-600/10 border-blue-500/30'
-                        : 'bg-white/[0.02] border-white/5 hover:border-white/20'
-                    } ${currentGeneratingIdx === index + 1 ? 'animate-pulse' : ''}`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-bold text-sm text-white">
-                        {block.episodes}
-                      </h4>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleGenerateNext(index + 1);
-                          }}
-                          disabled={isGenerating}
-                          className="p-1.5 text-slate-400 hover:text-white rounded-lg transition-colors disabled:opacity-30"
-                          title="重新生成"
-                        >
-                          {ICONS.Refresh}
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteBlock(block.id, index);
-                          }}
-                          disabled={isGenerating}
-                          className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg transition-colors disabled:opacity-30"
-                          title="删除"
-                        >
-                          {ICONS.X}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between text-[9px]">
-                      <span className="text-slate-500">风格：{block.style}</span>
-                      <span className="text-slate-600">{block.continuityStatus}</span>
-                    </div>
-                    <div className="mt-2 text-[9px] text-slate-500">
-                      桥段：{TROPE_TYPE_CONFIGS[block.trope].label}
-                    </div>
-                    {savedStatus[block.id] && (
-                      <div className="absolute top-3 right-3 bg-emerald-500/20 text-emerald-400 text-[9px] font-black px-2 py-0.5 rounded-full">
-                        已保存
-                      </div>
-                    )}
-                  </div>
-                ))}
+                <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest ml-4 italic">改编原著源</label>
+                <select 
+                  value={sourceId} 
+                  onChange={e => setSourceId(e.target.value)} 
+                  className="w-full bg-black border border-white/10 text-white rounded-[1.5rem] px-6 py-4 text-xs font-bold outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+                >
+                  <option value="">指向待改编小说...</option>
+                  {files.filter(f => f.category === Category.PLOT).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
               </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <ICONS.FileText className="w-12 h-12 text-slate-600 mb-4" />
-                <h3 className="text-lg font-bold text-white mb-2">暂无剧本块</h3>
-                <p className="text-[10px] text-slate-500 max-w-xs">
-                  点击"新增"按钮生成第一集剧本，或使用批量生成功能一次生成多集
-                </p>
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-violet-500 uppercase tracking-widest ml-4 italic">参考文件 (对标风格)</label>
+                <select 
+                  value={refFileId} 
+                  onChange={e => setRefFileId(e.target.value)} 
+                  className="w-full bg-black border border-white/10 text-white rounded-[1.5rem] px-6 py-4 text-xs font-bold outline-none focus:ring-1 focus:ring-violet-500 transition-all"
+                >
+                  <option value="">可选：指向风格参考...</option>
+                  {files.filter(f => f.id !== sourceId).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
               </div>
-            )}
+            </div>
+
+            <div className="pt-4 flex flex-col gap-4">
+               <button 
+                 disabled={!sourceId}
+                 onClick={() => { setIsSelectionActive(false); if(blocks.length === 0) handleGenerateNext(); }}
+                 className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 text-white py-6 rounded-[2rem] font-black text-sm uppercase tracking-widest shadow-2xl transition-all active:scale-95"
+               >
+                 确认配置并启动导演系统
+               </button>
+               {sourceId && <button onClick={() => setIsSelectionActive(false)} className="text-slate-500 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors">取消修改</button>}
+            </div>
           </div>
-        )}
-
-        {/* 剧本预览与编辑区（右侧） */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar bg-black p-6 md:p-12">
-          {!sourceId ? (
-            // 未选择源文件状态
-            <div className="flex flex-col items-center justify-center h-full opacity-30">
-              <ICONS.FileText className="w-16 h-16 text-slate-600 mb-6" />
-              <h3 className="text-xl font-bold text-white mb-3">请先选择源文件</h3>
-              <p className="text-[10px] text-slate-500 max-w-md text-center">
-                从左侧选择待改编的小说原著或大纲，然后配置生成参数开始剧本创作
-              </p>
-            </div>
-          ) : !activeBlockId && blocks.length === 0 ? (
-            // 已选择源文件但无剧本块
-            <div className="flex flex-col items-center justify-center h-full opacity-30">
-              <ICONS.PlusCircle className="w-16 h-16 text-slate-600 mb-6" />
-              <h3 className="text-xl font-bold text-white mb-3">开始创作剧本</h3>
-              <p className="text-[10px] text-slate-500 max-w-md text-center">
-                点击左侧"新增"按钮生成第一集剧本，或使用批量生成功能一次生成多集
-              </p>
-            </div>
-          ) : (
-            // 剧本预览区
-            <div className="max-w-4xl mx-auto">
-              {errorMessage && (
-                <div className="mb-6 p-4 bg-rose-600/10 border border-rose-500/20 rounded-2xl animate-fade-up">
-                  <p className="text-rose-400 text-xs font-bold flex items-center gap-2">
-                    {ICONS.Error} {errorMessage}
-                  </p>
-                </div>
-              )}
-
-              {/* 生成中状态 */}
-              {currentGeneratingIdx !== null && (
-                <div className="mb-6 p-4 bg-blue-600/10 border border-blue-500/20 rounded-2xl animate-fade-up">
-                  <p className="text-blue-400 text-xs font-bold flex items-center gap-2">
-                    <span className="animate-spin">{ICONS.Loading}</span> 
-                    正在生成第 {currentGeneratingIdx} 集剧本...
-                  </p>
-                </div>
-              )}
-
-              {/* 剧本标题栏 */}
-              {activeBlockId && (
-                <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-                  <div>
-                    <h3 className="text-xl font-bold text-white italic">
-                      {blocks.find(b => b.id === activeBlockId)?.episodes || '剧本预览'}
-                    </h3>
-                    <div className="flex flex-wrap gap-3 mt-2">
-                      <span className="text-[10px] text-slate-500 flex items-center gap-1">
-                        {ICONS.Paintbrush} 风格：{DIRECTOR_STYLE_CONFIGS[directorStyle].label}
-                      </span>
-                      <span className="text-[10px] text-slate-500 flex items-center gap-1">
-                        {ICONS.Star} 桥段：{TROPE_TYPE_CONFIGS[trope].label}
-                      </span>
-                      <span className="text-[10px] text-slate-500 flex items-center gap-1">
-                        {ICONS.User} 受众：{mode === AudienceMode.MALE ? '男性向' : mode === AudienceMode.FEMALE ? '女性向' : '全受众'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* 操作按钮组 */}
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => handleGenerateNext(currentGeneratingIdx)}
-                      disabled={isGenerating}
-                      className="px-4 py-2 bg-rose-600/20 hover:bg-rose-600/30 text-rose-500 border border-rose-600/30 rounded-2xl text-[10px] font-black uppercase transition-all disabled:opacity-30"
-                    >
-                      {ICONS.Refresh} 重新生成
-                    </button>
-                    <button
-                      onClick={() => handleSaveBlock(blocks.find(b => b.id === activeBlockId)!)}
-                      disabled={isGenerating || savedStatus[activeBlockId]}
-                      className={`px-4 py-2 rounded-2xl text-[10px] font-black uppercase transition-all ${
-                        savedStatus[activeBlockId]
-                          ? 'bg-emerald-500 text-white flex items-center gap-1'
-                          : 'bg-blue-600 hover:bg-blue-500 text-white'
-                      } disabled:opacity-30`}
-                    >
-                      {savedStatus[activeBlockId] ? (
-                        <>
-                          {ICONS.Check} 已保存
-                        </>
-                      ) : (
-                        '保存到知识库'
-                      )}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* 剧本内容预览 */}
-              <div className="bg-[#0a0a0c]/80 border border-white/5 rounded-[2rem] p-6 md:p-10 shadow-2xl">
-                {streamingText ? (
-                  // 流式生成中
-                  <div className="whitespace-pre-wrap font-sans text-slate-200 leading-[2.2] text-base font-medium">
-                    {streamingText}
-                    <span className="inline-block w-2.5 h-5 bg-blue-600 ml-2 animate-pulse shadow-[0_0_10px_rgba(37,99,235,0.8)]" />
-                  </div>
-                ) : activeBlockId ? (
-                  // 生成完成
-                  <div className="whitespace-pre-wrap font-sans text-slate-200 leading-[2.2] text-base font-medium">
-                    {blocks.find(b => b.id === activeBlockId)?.content || '暂无剧本内容'}
-                  </div>
-                ) : (
-                  // 无激活剧本块
-                  <div className="flex items-center justify-center h-64 text-slate-600">
-                    请从左侧选择一个剧本块进行预览
-                  </div>
-                )}
+        </div>
+      ) : (
+        <>
+          {/* 控制台面板 */}
+          <div className="flex-shrink-0 mx-8 mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-white/[0.03] border border-white/10 rounded-[2.5rem] p-6 flex items-center gap-5 group hover:bg-white/[0.05] transition-all">
+              <div className="w-12 h-12 bg-blue-600/10 rounded-2xl flex items-center justify-center text-blue-500 group-hover:scale-110 transition-all">{ICONS.List}</div>
+              <div>
+                <p className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">当前总集数</p>
+                <p className="text-lg font-black text-white italic">{blocks.length} <span className="text-[10px] text-slate-700 not-italic">EPS</span></p>
               </div>
             </div>
-          )}
-        </div>
-      </div>
+
+            <div className="bg-white/[0.03] border border-white/10 rounded-[2.5rem] p-6 flex flex-col justify-center">
+               <div className="flex justify-between items-center mb-1">
+                 <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic">批量生成步进</span>
+                 <span className="text-blue-500 font-mono text-xs font-bold">{batchCount} 集</span>
+               </div>
+               <input 
+                type="range" min="1" max="5" value={batchCount} 
+                onChange={e => setBatchCount(parseInt(e.target.value))}
+                className="w-full h-1 bg-white/5 rounded-full appearance-none accent-blue-600 cursor-pointer"
+               />
+            </div>
+
+            <div className="bg-white/[0.03] border border-white/10 rounded-[2.5rem] p-4 flex items-center gap-4 col-span-2">
+               <div className="flex-1 flex flex-col gap-1 pl-4">
+                 <span className="text-[9px] font-black text-slate-500 uppercase truncate max-w-[200px]">原著: {files.find(f => f.id === sourceId)?.name}</span>
+                 <div className="flex gap-4">
+                    <button onClick={() => setIsSelectionActive(true)} className="text-[8px] font-black text-blue-500 hover:text-white uppercase transition-colors flex items-center gap-1">
+                      {ICONS.Settings} 更改指向
+                    </button>
+                    {unsavedCount > 0 && (
+                      <button onClick={saveAllUnsaved} className="text-[8px] font-black text-emerald-500 hover:text-white uppercase transition-colors flex items-center gap-1 animate-pulse">
+                        {ICONS.Check} 一键保存全部 ({unsavedCount})
+                      </button>
+                    )}
+                 </div>
+               </div>
+               <button 
+                 disabled={isGenerating} 
+                 onClick={handleBatchGenerate} 
+                 className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-[1.5rem] font-black text-xs uppercase shadow-xl transition-all active:scale-95 flex items-center gap-3"
+               >
+                 {isGenerating ? <div className="animate-spin">{ICONS.Refresh}</div> : ICONS.Plus}
+                 {batchCount > 1 ? `批量生产 ${batchCount} 集` : "生成下一集"}
+               </button>
+            </div>
+          </div>
+
+          {/* 剧本流 */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar px-10 pt-6 pb-40">
+            <div className="max-w-5xl mx-auto space-y-12">
+              {blocks.map((block, idx) => (
+                <div key={block.id} className="bg-white/[0.02] rounded-[3.5rem] border border-white/5 p-12 hover:border-white/10 transition-all animate-fade-up relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/5 blur-[60px] rounded-full group-hover:bg-blue-600/10 transition-all"></div>
+                    <div className="flex items-center justify-between mb-8 relative z-10">
+                       <div className="flex items-center gap-6">
+                          <div className="w-14 h-14 rounded-[1.5rem] bg-white/5 border border-white/10 flex items-center justify-center text-blue-500 font-mono font-black italic shadow-inner group-hover:border-blue-500/30 transition-all">{idx + 1}</div>
+                          <div>
+                            <span className="text-2xl font-black text-white italic tracking-tighter uppercase">{block.episodes}</span>
+                            <p className="text-[9px] text-slate-700 font-black uppercase tracking-widest mt-1">DIRECTED PRODUCTION | {block.continuityStatus}</p>
+                          </div>
+                       </div>
+                       <div className="flex gap-3">
+                         <button onClick={() => saveBlockToKB(block)} disabled={savedStatus[block.id]} className={`px-6 py-3 rounded-2xl text-[9px] font-black uppercase transition-all shadow-lg ${savedStatus[block.id] ? 'bg-emerald-600/20 text-emerald-500 border border-emerald-500/20' : 'bg-white/5 text-white hover:bg-white/10 border border-white/10'}`}>
+                            {savedStatus[block.id] ? "✓ 已同步" : "存入库"}
+                         </button>
+                         <button onClick={() => handleGenerateNext(idx + 1)} disabled={isGenerating} className="bg-rose-600/10 text-rose-500 px-6 py-3 rounded-2xl text-[9px] font-black uppercase hover:bg-rose-600/20 transition-all border border-rose-600/10 flex items-center gap-2">
+                            {ICONS.Refresh} 不满意请重写
+                         </button>
+                       </div>
+                    </div>
+                    <div className="w-full bg-black/60 border border-white/5 rounded-[3rem] p-12 font-sans text-base text-slate-300 whitespace-pre-wrap leading-[2.2] italic shadow-inner tracking-wide relative z-10">
+                      {isGenerating && currentGeneratingIdx === idx + 1 ? streamingText : block.content}
+                      {isGenerating && currentGeneratingIdx === idx + 1 && <span className="inline-block w-2.5 h-5 bg-blue-600 ml-2 animate-pulse shadow-[0_0_10px_rgba(37,99,235,0.8)]" />}
+                    </div>
+                </div>
+              ))}
+
+              {isGenerating && currentGeneratingIdx === blocks.length + 1 && (
+                <div className="bg-blue-600/[0.04] rounded-[4rem] border border-blue-500/10 p-16 animate-pulse">
+                   <div className="flex items-center gap-4 mb-8">
+                     <div className="w-10 h-10 border-2 border-white/5 border-t-blue-500 rounded-full animate-spin"></div>
+                     <span className="text-xs font-black text-blue-400 uppercase tracking-widest">正在进行第 {blocks.length + 1} 集工业级改编...</span>
+                   </div>
+                  <div className="text-blue-100/60 whitespace-pre-wrap leading-[2.2] font-sans text-base italic">
+                    {streamingText}
+                    <span className="inline-block w-2.5 h-5 bg-blue-600 ml-2 shadow-[0_0_15px_rgba(37,99,235,1)]" />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

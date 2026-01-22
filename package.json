@@ -1,19 +1,12 @@
 {
-  "name": "anime-engine-v3.8",
+  "name": "漫剧剧本智能适配大师-pro",
   "private": true,
-  "version": "3.8.0",
+  "version": "0.0.0",
   "type": "module",
-  "description": "专业级漫剧剧本智能创作平台 - 集成 DMXAPI 驱动，支持小说改编、大纲生成、分镜设计、角色创作、Word 导出，本地持久化存储",
-  "author": "ANIME ENGINE Team",
-  "license": "MIT",
   "scripts": {
-    "dev": "vite --open",
-    "build": "tsc && vite build",
-    "preview": "vite preview --open",
-    "type-check": "tsc --noEmit",
-    "lint": "eslint . --ext .ts,.tsx",
-    "format": "prettier --write .",
-    "prepare": "husky install"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
     "react": "^19.2.3",
@@ -22,46 +15,14 @@
     "@google/genai": "^1.37.0",
     "docx": "^9.5.1",
     "mammoth": "^1.8.0",
+    "next": "^16.1.2",
     "@supabase/supabase-js": "^2.90.1",
-    "@clerk/clerk-react": "^5.7.2" // 替换 Next.js 版本为 React 通用版本
+    "@clerk/nextjs": "^6.36.7"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
-    "@types/react": "^19.2.37",
-    "@types/react-dom": "^19.2.15",
-    "@vitejs/plugin-react": "^5.3.1",
-    "@typescript-eslint/eslint-plugin": "^8.11.0",
-    "@typescript-eslint/parser": "^8.11.0",
-    "eslint": "^8.57.0",
-    "eslint-plugin-react-hooks": "^4.6.2",
-    "eslint-plugin-react-refresh": "^0.4.12",
-    "prettier": "^3.3.3",
-    "husky": "^9.1.6",
-    "lint-staged": "^15.2.10",
+    "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
-  },
-  "lint-staged": {
-    "*.{ts,tsx}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "*.{json,md}": [
-      "prettier --write"
-    ]
-  },
-  "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=9.0.0"
-  },
-  "keywords": [
-    "anime-engine",
-    "漫剧创作",
-    "剧本生成",
-    "小说改编",
-    "ai剧本",
-    "react",
-    "typescript",
-    "vite"
-  ]
+  }
 }
