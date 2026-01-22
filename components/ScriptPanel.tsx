@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { KBFile, Category, AudienceMode, ScriptBlock, ModelType, DirectorStyle, TropeType } from '../types.ts';
 import { ICONS } from '../constants.tsx';
 import { GeminiService } from '../services/geminiService.ts';
+import mammoth from 'mammoth';
 
 interface ScriptPanelProps {
   files: KBFile[];
@@ -23,7 +24,10 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType, onSav
   const [currentGeneratingIdx, setCurrentGeneratingIdx] = useState<number | null>(null);
   const [streamingText, setStreamingText] = useState('');
   const [savedStatus, setSavedStatus] = useState<Record<string, boolean>>({});
+  const [fullSaveStatus, setFullSaveStatus] = useState(false);
+  const [isUploadingRef, setIsUploadingRef] = useState(false);
   
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const gemini = useMemo(() => new GeminiService(), []);
 
   useEffect(() => {
@@ -37,6 +41,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType, onSav
         }
       } else setBlocks([]);
     }
+    setFullSaveStatus(false);
   }, [sourceId]);
 
   useEffect(() => {
@@ -44,6 +49,37 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType, onSav
       localStorage.setItem(`script_blocks_v12_${sourceId}`, JSON.stringify(blocks));
     }
   }, [blocks, sourceId]);
+
+  const handleUploadRef = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingRef(true);
+    try {
+      let content = "";
+      if (file.name.endsWith('.docx')) {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        content = result.value;
+      } else {
+        content = await file.text();
+      }
+
+      const newFile: KBFile = {
+        id: Math.random().toString(36).substr(2, 9),
+        name: `[参考] ${file.name}`,
+        category: Category.REFERENCE,
+        content: content,
+        uploadDate: new Date().toISOString()
+      };
+      
+      onSaveToKB?.(newFile);
+      setRefFileId(newFile.id);
+    } catch (err) {
+      alert("上传参考资料失败");
+    } finally {
+      setIsUploadingRef(false);
+    }
+  };
 
   const executeGeneration = async (existingBlocks: ScriptBlock[], targetIdx?: number) => {
     const isRegen = targetIdx !== undefined;
@@ -98,6 +134,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType, onSav
   const handleGenerateNext = async (targetIdx?: number) => {
     if (!sourceId) return;
     setIsGenerating(true);
+    setFullSaveStatus(false);
     const result = await executeGeneration(blocks, targetIdx);
     if (result) {
       if (targetIdx !== undefined) {
@@ -117,6 +154,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType, onSav
   const handleBatchGenerate = async () => {
     if (!sourceId) return;
     setIsGenerating(true);
+    setFullSaveStatus(false);
     let currentBlocks = [...blocks];
     for (let i = 0; i < batchCount; i++) {
       const result = await executeGeneration(currentBlocks);
@@ -141,8 +179,27 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType, onSav
     setSavedStatus(prev => ({ ...prev, [block.id]: true }));
   };
 
+  const handleSaveAllToKB = () => {
+    if (blocks.length === 0 || fullSaveStatus) return;
+    const sourceFile = files.find(f => f.id === sourceId);
+    const combinedContent = blocks.map(b => `【${b.episodes}】\n\n${b.content}`).join('\n\n' + '='.repeat(20) + '\n\n');
+    
+    const newFile: KBFile = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: `[全本改编] ${sourceFile?.name || '剧本全案'} - 共${blocks.length}集`,
+      category: Category.PLOT,
+      content: combinedContent,
+      uploadDate: new Date().toISOString()
+    };
+    
+    onSaveToKB?.(newFile);
+    setFullSaveStatus(true);
+  };
+
   return (
     <div className="flex-1 flex flex-col bg-[#000000] overflow-hidden">
+      <input type="file" ref={fileInputRef} className="hidden" onChange={handleUploadRef} accept=".txt,.docx" />
+      
       {!sourceId || isSelectionActive ? (
         <div className="flex-1 flex flex-col items-center justify-center p-12 animate-fade-up bg-[#000000]">
           <div className="card-neo max-w-2xl w-full p-16 space-y-10 backdrop-blur-3xl shadow-[0_0_80px_rgba(0,0,0,1)]">
@@ -152,23 +209,26 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType, onSav
                </div>
                <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">AI 剧本适配中心</h2>
                <p className="text-white/40 text-sm mt-4 font-bold tracking-widest leading-relaxed">
-                 请选择原著，系统将自动进行工业级漫剧改编。
+                 请选择原著及创作参考，系统将自动进行风格对齐的漫剧改编。
                </p>
             </div>
 
             <div className="grid grid-cols-1 gap-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-3">
-                  <label className="text-[10px] font-black text-[#2062ee] uppercase tracking-widest ml-4">改编原著源</label>
+                  <label className="text-[10px] font-black text-[#2062ee] uppercase tracking-widest ml-4">改编原著源 (Source)</label>
                   <select value={sourceId} onChange={e => setSourceId(e.target.value)} className="input-neo w-full">
                     <option value="">指向待改编原著...</option>
                     {files.filter(f => f.category === Category.PLOT).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-3">
-                  <label className="text-[10px] font-black text-white/40 uppercase tracking-widest ml-4">参考文件 (可选)</label>
+                  <div className="flex items-center justify-between px-4">
+                    <label className="text-[10px] font-black text-white/40 uppercase tracking-widest">风格参考文件 (Reference)</label>
+                    <button onClick={() => fileInputRef.current?.click()} className="text-[9px] font-black text-[#2062ee] uppercase hover:underline">上传新资料</button>
+                  </div>
                   <select value={refFileId} onChange={e => setRefFileId(e.target.value)} className="input-neo w-full text-white/60 border-white/10">
-                    <option value="">选择风格参考资料...</option>
+                    <option value="">{isUploadingRef ? "正在上传..." : "选择风格/格式对标资料..."}</option>
                     {files.filter(f => f.id !== sourceId).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                   </select>
                 </div>
@@ -190,7 +250,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType, onSav
             </div>
 
             <button 
-              disabled={!sourceId}
+              disabled={!sourceId || isUploadingRef}
               onClick={() => { setIsSelectionActive(false); if(blocks.length === 0) handleGenerateNext(); }}
               className="w-full bg-[#2062ee] hover:bg-blue-600 text-white py-6 rounded-3xl font-black text-sm uppercase tracking-widest shadow-2xl transition-all active:scale-95 shadow-blue-900/40"
             >
@@ -200,7 +260,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType, onSav
         </div>
       ) : (
         <>
-          <div className="flex-shrink-0 mx-8 mt-6 grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="flex-shrink-0 mx-8 mt-6 grid grid-cols-1 md:grid-cols-5 gap-4">
             <div className="card-neo p-6 flex items-center gap-5 border-white/10">
               <div className="w-12 h-12 bg-blue-600/10 rounded-2xl flex items-center justify-center text-[#2062ee]">{ICONS.List}</div>
               <div>
@@ -220,17 +280,29 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType, onSav
             <div className="card-neo p-4 flex items-center gap-3 border-white/10">
               <div className="flex flex-col flex-1 min-w-0">
                 <span className="text-[9px] font-black text-white/40 uppercase truncate">参考：{files.find(f => f.id === refFileId)?.name || '无'}</span>
-                <button onClick={() => setIsSelectionActive(true)} className="text-[#2062ee] text-[10px] font-bold text-left hover:underline">修改配置</button>
+                <button onClick={() => setIsSelectionActive(true)} className="text-[#2062ee] text-[10px] font-bold text-left hover:underline">修改配置 / 参考资料</button>
               </div>
             </div>
 
             <button 
               disabled={isGenerating} 
               onClick={handleBatchGenerate} 
-              className="bg-[#2062ee] hover:bg-blue-600 text-white rounded-3xl font-black text-xs uppercase shadow-xl transition-all active:scale-95 flex items-center justify-center gap-3 shadow-blue-900/40"
+              className="bg-[#2062ee] hover:bg-blue-600 text-white rounded-3xl font-black text-[10px] uppercase shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2 shadow-blue-900/40"
             >
               {isGenerating ? <div className="animate-spin">{ICONS.Refresh}</div> : ICONS.Plus}
               生成剧本单元
+            </button>
+
+            <button 
+              disabled={isGenerating || blocks.length === 0 || fullSaveStatus} 
+              onClick={handleSaveAllToKB} 
+              className={`rounded-3xl font-black text-[10px] uppercase shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2 ${
+                fullSaveStatus 
+                ? 'bg-emerald-600/20 text-emerald-500 border border-emerald-500/30' 
+                : (blocks.length === 0 ? 'bg-white/5 text-white/20 border border-white/10 opacity-50' : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/40')
+              }`}
+            >
+              {fullSaveStatus ? "✓ 全本已入库" : <>{ICONS.Check} 保存全本到资料库</>}
             </button>
           </div>
 
@@ -248,7 +320,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType, onSav
                        </div>
                        <div className="flex gap-3">
                          <button onClick={() => saveBlockToKB(block)} disabled={savedStatus[block.id]} className={`px-6 py-3 rounded-2xl text-[9px] font-black uppercase transition-all ${savedStatus[block.id] ? 'bg-emerald-600/20 text-emerald-500' : 'bg-white/5 text-white hover:bg-white/10 border border-white/10'}`}>
-                            {savedStatus[block.id] ? "✓ 已存入" : "存入资料库"}
+                            {savedStatus[block.id] ? "✓ 已存入" : "分集存入"}
                          </button>
                          <button onClick={() => handleGenerateNext(idx + 1)} disabled={isGenerating} className="bg-rose-600/10 text-rose-500 px-6 py-3 rounded-2xl text-[9px] font-black uppercase hover:bg-rose-600/20 transition-all border border-rose-600/10">
                             重写
@@ -266,7 +338,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({ files, mode, modelType, onSav
                 <div className="card-neo p-16 animate-pulse border-blue-500/20 bg-blue-600/5">
                    <div className="flex items-center gap-4 mb-8">
                      <div className="w-10 h-10 border-2 border-white/10 border-t-[#2062ee] rounded-full animate-spin"></div>
-                     <span className="text-xs font-black text-[#2062ee] uppercase tracking-widest">正在改编第 {blocks.length + 1} 集...</span>
+                     <span className="text-xs font-black text-[#2062ee] uppercase tracking-widest">正在进行风格化改编第 {blocks.length + 1} 集...</span>
                    </div>
                   <div className="text-white/60 whitespace-pre-wrap leading-relaxed font-sans text-base italic">
                     {streamingText}

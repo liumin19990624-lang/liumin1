@@ -3,6 +3,13 @@ import { AudienceMode, CharacterAsset, KBFile, Category } from '../types';
 import { ICONS, CHARACTER_TAGS } from '../constants';
 import { GeminiService } from '../services/geminiService';
 
+interface TimelineEntry {
+  stage: string;
+  visual: string;
+  event: string;
+  style: string;
+}
+
 const CharacterVisuals: React.FC<{ mode: AudienceMode, files: KBFile[], onSaveToKB?: (f: KBFile) => void }> = ({ mode, files, onSaveToKB }) => {
   const [activeSubTab, setActiveSubTab] = useState<'VISUAL' | 'LAB'>('VISUAL');
   const [cards, setCards] = useState<(CharacterAsset & { is_regenerating?: boolean })[]>([]);
@@ -113,6 +120,24 @@ const CharacterVisuals: React.FC<{ mode: AudienceMode, files: KBFile[], onSaveTo
     } finally { setIsLabLoading(false); }
   };
 
+  const parsedTimeline = useMemo((): TimelineEntry[] => {
+    const text = labStreaming || labResult;
+    if (!text) return [];
+    
+    // 解析 [阶段名]: [描述] | [事件] | [风格] 格式
+    const lines = text.split('\n').filter(l => l.includes('|') && l.includes(':'));
+    return lines.map(line => {
+      const [header, ...rest] = line.split(':');
+      const parts = rest.join(':').split('|').map(s => s.trim());
+      return {
+        stage: header.trim().replace(/^\[|\]$/g, ''),
+        visual: parts[0] || '',
+        event: parts[1] || '',
+        style: parts[2] || ''
+      };
+    }).filter(t => t.stage && t.event);
+  }, [labStreaming, labResult]);
+
   const handleSaveLabResultToKB = () => {
     const finalContent = isEditingLab ? editedLabResult : labResult;
     if (!finalContent) return;
@@ -135,7 +160,7 @@ const CharacterVisuals: React.FC<{ mode: AudienceMode, files: KBFile[], onSaveTo
           视觉渲染实验室
         </button>
         <button onClick={() => setActiveSubTab('LAB')} className={`text-[11px] font-black uppercase tracking-widest flex items-center gap-2 h-full border-b-2 transition-all ${activeSubTab === 'LAB' ? 'border-[#2062ee] text-white' : 'border-transparent text-white/40 hover:text-white'}`}>
-          角色小传建模
+          角色小传与分镜时间轴
         </button>
       </div>
 
@@ -254,26 +279,26 @@ const CharacterVisuals: React.FC<{ mode: AudienceMode, files: KBFile[], onSaveTo
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative z-10">
                    <div className="space-y-3">
                     <label className="text-[10px] font-black text-white/70 uppercase ml-2 tracking-widest">角色姓名</label>
-                    <input value={inputName} onChange={e => setInputName(e.target.value)} placeholder="核心角色名..." className="input-neo w-full placeholder:text-white/20" />
+                    <input value={inputName} onChange={e => setInputName(e.target.value)} placeholder="角色全称..." className="input-neo w-full placeholder:text-white/20" />
                   </div>
                   <div className="space-y-3">
-                    <label className="text-[10px] font-black text-white/70 uppercase ml-2 tracking-widest">内容背景原著</label>
+                    <label className="text-[10px] font-black text-white/70 uppercase ml-2 tracking-widest">原著背景资料</label>
                     <select value={labFileId} onChange={e => setLabFileId(e.target.value)} className="input-neo w-full appearance-none cursor-pointer">
                        <option value="">指向小说内容...</option>
                        {files.filter(f => f.category === Category.PLOT).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                     </select>
                   </div>
                   <div className="space-y-3">
-                    <label className="text-[10px] font-black text-[#2062ee] uppercase ml-2 tracking-widest">参考小传模板</label>
+                    <label className="text-[10px] font-black text-[#2062ee] uppercase ml-2 tracking-widest">参考小传格式 (对标)</label>
                     <select value={labRefId} onChange={e => setLabRefId(e.target.value)} className="input-neo w-full appearance-none cursor-pointer border-[#2062ee]/30">
-                       <option value="">指向参考小传模板...</option>
+                       <option value="">指向参考小传...</option>
                        {files.filter(f => f.category === Category.CHARACTER).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                     </select>
                   </div>
                 </div>
                 <div className="space-y-3 relative z-10">
-                  <label className="text-[10px] font-black text-white/70 uppercase ml-2 tracking-widest">补充设定碎片</label>
-                  <textarea value={inputDesc} onChange={e => setInputDesc(e.target.value)} placeholder="补充任何关于性格、因果、隐藏身份的细节..." className="input-neo w-full h-32 leading-relaxed resize-none placeholder:text-white/20" />
+                  <label className="text-[10px] font-black text-white/70 uppercase ml-2 tracking-widest">额外特征设定</label>
+                  <textarea value={inputDesc} onChange={e => setInputDesc(e.target.value)} placeholder="补充任何关于性格、秘密动机、特殊道具的细节..." className="input-neo w-full h-32 leading-relaxed resize-none placeholder:text-white/20" />
                 </div>
                 <button 
                   disabled={isLabLoading} 
@@ -283,62 +308,89 @@ const CharacterVisuals: React.FC<{ mode: AudienceMode, files: KBFile[], onSaveTo
                   }`}
                 >
                   {isLabLoading ? <div className="animate-spin">{ICONS.Refresh}</div> : ICONS.Brain}
-                  {isLabLoading ? "正在解析因果逻辑..." : "启动无上限小传建模"}
+                  {isLabLoading ? "正在重构角色灵魂..." : "启动深度建模与生平分镜生成"}
                 </button>
               </div>
 
               {(labResult || labStreaming) && (
-                <div className="card-neo overflow-hidden flex flex-col shadow-2xl animate-fade-up">
-                  <div className="p-8 border-b border-white/10 flex justify-between items-center bg-white/[0.02]">
-                    <div className="flex items-center gap-4">
-                      <div className="w-2.5 h-2.5 rounded-full bg-[#2062ee] animate-pulse shadow-[0_0_15px_rgba(32,98,238,0.6)]"></div>
-                      <span className="text-[11px] font-black text-white uppercase tracking-[0.25em] italic">Character Bio Lab Report</span>
-                    </div>
-                    <div className="flex gap-4">
-                      {labResult && !labStreaming && (
+                <div className="grid grid-cols-12 gap-10 animate-fade-up">
+                  {/* 小传文本内容 */}
+                  <div className={`card-neo overflow-hidden flex flex-col shadow-2xl transition-all duration-500 ${parsedTimeline.length > 0 ? 'col-span-8' : 'col-span-12'}`}>
+                    <div className="p-8 border-b border-white/10 flex justify-between items-center bg-white/[0.02]">
+                      <div className="flex items-center gap-4">
+                        <div className="w-2.5 h-2.5 rounded-full bg-[#2062ee] animate-pulse"></div>
+                        <span className="text-[11px] font-black text-white uppercase tracking-[0.25em]">Character Deep Bio</span>
+                      </div>
+                      <div className="flex gap-4">
                         <button 
                           onClick={() => {
                             if (!isEditingLab) setEditedLabResult(labResult);
                             setIsEditingLab(!isEditingLab);
                           }} 
                           className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase transition-all border ${
-                            isEditingLab ? 'bg-amber-600/20 border-amber-500/40 text-amber-500' : 'bg-white/5 border-white/10 text-white hover:bg-white/10'
+                            isEditingLab ? 'bg-amber-600/20 border-amber-500/40 text-amber-500' : 'bg-white/5 border-white/10 text-white'
                           }`}
                         >
-                          {isEditingLab ? "取消编辑" : "直接修改内容"}
+                          {isEditingLab ? "取消" : "编辑内容"}
                         </button>
-                      )}
-                      {!isEditingLab && (
-                        <button onClick={startLabWork} disabled={!!labStreaming} className="bg-rose-600/15 hover:bg-rose-600 text-rose-400 hover:text-white px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase transition-all border border-rose-500/30">
-                          {ICONS.Refresh} 不满意重塑
+                        <button 
+                          onClick={handleSaveLabResultToKB} 
+                          disabled={saveStatus || !!labStreaming} 
+                          className={`px-10 py-2.5 rounded-2xl text-[10px] font-black uppercase shadow-2xl transition-all ${
+                            saveStatus ? 'bg-emerald-600 text-white' : 'bg-[#2062ee] text-white hover:bg-blue-600 shadow-blue-900/40'
+                          }`}
+                        >
+                          {saveStatus ? "✓ 已存入库" : "存入资料库"}
                         </button>
+                      </div>
+                    </div>
+                    <div className="p-16 whitespace-pre-wrap font-sans text-white/90 leading-[2.2] text-lg font-medium italic tracking-wide h-[750px] overflow-y-auto custom-scrollbar bg-black/60 shadow-inner">
+                      {isEditingLab ? (
+                        <textarea
+                          value={editedLabResult}
+                          onChange={(e) => setEditedLabResult(e.target.value)}
+                          className="w-full h-full bg-transparent border-none focus:ring-0 text-white font-sans leading-[2.2] text-lg font-medium tracking-wide resize-none outline-none"
+                          autoFocus
+                        />
+                      ) : (
+                        <>
+                          {labStreaming || labResult}
+                          {labStreaming && <span className="inline-block w-3 h-7 bg-[#2062ee] ml-2 animate-pulse shadow-[0_0_20px_rgba(32,98,238,0.8)]" />}
+                        </>
                       )}
-                      <button 
-                        onClick={handleSaveLabResultToKB} 
-                        disabled={saveStatus || !!labStreaming} 
-                        className={`px-10 py-2.5 rounded-2xl text-[10px] font-black uppercase shadow-2xl transition-all ${
-                          saveStatus ? 'bg-emerald-600 text-white shadow-emerald-900/40' : 'bg-[#2062ee] text-white hover:bg-blue-600 shadow-blue-900/40'
-                        }`}
-                      >
-                        {saveStatus ? "✓ 已存入库" : (isEditingLab ? "保存修改" : "存入知识库")}
-                      </button>
                     </div>
                   </div>
-                  <div className="p-16 whitespace-pre-wrap font-sans text-white/90 leading-[2.2] text-lg font-medium italic tracking-wide h-[650px] overflow-y-auto custom-scrollbar bg-black/60 shadow-inner">
-                    {isEditingLab ? (
-                      <textarea
-                        value={editedLabResult}
-                        onChange={(e) => setEditedLabResult(e.target.value)}
-                        className="w-full h-full bg-transparent border-none focus:ring-0 text-white font-sans leading-[2.2] text-lg font-medium tracking-wide resize-none outline-none"
-                        autoFocus
-                      />
-                    ) : (
-                      <>
-                        {labStreaming || labResult}
-                        {labStreaming && <span className="inline-block w-3 h-7 bg-[#2062ee] ml-2 animate-pulse shadow-[0_0_20px_rgba(32,98,238,0.8)]" />}
-                      </>
-                    )}
-                  </div>
+
+                  {/* 生平分镜时间轴组件 */}
+                  {parsedTimeline.length > 0 && (
+                    <div className="col-span-4 space-y-6">
+                       <div className="flex items-center gap-3 px-2">
+                         <div className="text-[#2062ee]">{ICONS.Layout}</div>
+                         <h3 className="text-xs font-black uppercase tracking-[0.3em] text-white/60 italic">生平分镜时间轴 (Timeline)</h3>
+                       </div>
+                       <div className="relative border-l border-white/10 ml-4 space-y-8 py-4">
+                          {parsedTimeline.map((item, idx) => (
+                            <div key={idx} className="relative pl-10 group animate-fade-up" style={{ animationDelay: `${idx * 150}ms` }}>
+                               <div className="absolute left-[-5px] top-1.5 w-2.5 h-2.5 rounded-full bg-[#2062ee] group-hover:scale-150 transition-transform shadow-[0_0_15px_rgba(32,98,238,0.6)]"></div>
+                               <div className="card-neo p-6 bg-white/[0.03] hover:bg-white/[0.08] transition-all border border-white/5 group-hover:border-[#2062ee]/30">
+                                  <span className="text-[10px] font-black text-[#2062ee] uppercase tracking-[0.2em] mb-2 block">{item.stage}</span>
+                                  <h4 className="text-sm font-bold text-white mb-3 italic">“{item.event}”</h4>
+                                  <div className="space-y-3 pt-3 border-t border-white/5">
+                                     <div className="flex items-start gap-2">
+                                        <div className="mt-1 text-white/20 scale-75">{ICONS.Camera}</div>
+                                        <p className="text-[11px] text-white/50 leading-relaxed italic">{item.visual}</p>
+                                     </div>
+                                     <div className="flex items-start gap-2">
+                                        <div className="mt-1 text-white/20 scale-75">{ICONS.Sparkles}</div>
+                                        <p className="text-[9px] font-black text-[#2062ee]/60 uppercase italic tracking-wider">{item.style}</p>
+                                     </div>
+                                  </div>
+                               </div>
+                            </div>
+                          ))}
+                       </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
