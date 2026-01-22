@@ -4,7 +4,7 @@ import {
   FileText, Users, Settings, Library, ChevronRight, ChevronLeft, Upload, Play, RefreshCcw, Download,
   Trash2, FolderOpen, ArrowLeft, Zap, Heart, MessageSquare, Wand2, Image as ImageIcon, Sparkles, Volume2, PlusCircle,
   Sword, Shield, Star, ZapOff, Flame, ListOrdered, Clock, Combine, FileDown, Layers, Check, Camera, Eye, Layout, Sliders,
-  Brain, Target, Compass, Rocket
+  Brain, Target, Compass, Rocket, Info, ChevronUp, ChevronDown, Key
 } from 'lucide-react';
 import { DirectorStyle, TropeType, ModelType, AudienceMode } from './types';
 
@@ -15,6 +15,8 @@ export const ICONS = {
   Library: <Library className="w-5 h-5" />,
   ChevronRight: <ChevronRight className="w-5 h-5" />,
   ChevronLeft: <ChevronLeft className="w-5 h-5" />,
+  ChevronUp: <ChevronUp className="w-4 h-4" />,
+  ChevronDown: <ChevronDown className="w-4 h-4" />,
   Upload: <Upload className="w-5 h-5" />,
   Play: <Play className="w-5 h-5" />,
   Refresh: <RefreshCcw className="w-5 h-5" />,
@@ -47,8 +49,16 @@ export const ICONS = {
   Brain: <Brain className="w-5 h-5" />,
   Target: <Target className="w-4 h-4" />,
   Compass: <Compass className="w-4 h-4" />,
-  Rocket: <Rocket className="w-4 h-4" />
+  Rocket: <Rocket className="w-4 h-4" />,
+  Info: <Info className="w-4 h-4" />,
+  Key: <Key className="w-4 h-4" />
 };
+
+export const CHARACTER_TAGS = [
+  "银发蓝瞳", "战损披风", "赛博朋克义眼", "古风汉服", "现代校服", 
+  "机械铠甲", "精灵尖耳", "深红色长袍", "黑色皮衣", "白色连衣裙",
+  "持剑姿态", "释放魔法", "冷酷眼神", "温柔微笑", "高傲神情"
+];
 
 export const CINEMATIC_MANUAL = `
 【二次元AI绘画镜头语言全量结构化手册】

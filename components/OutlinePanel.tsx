@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { KBFile, AudienceMode, Category } from '../types.ts';
 import { ICONS } from '../constants.tsx';
@@ -42,13 +41,14 @@ const OutlinePanel: React.FC<{ files: KBFile[], onSaveToKB: (f: KBFile) => void 
 
       for await (const chunk of stream) {
         fullContent += chunk;
-        setStreamingText(GeminiService.cleanText(fullContent));
+        setStreamingText(fullContent);
       }
-      setResult(GeminiService.cleanText(fullContent));
+      const cleaned = GeminiService.cleanText(fullContent);
+      setResult(cleaned);
       setStreamingText('');
     } catch (err: any) {
       console.error(err);
-      alert("全案分析异常中止，请检查 API 配置");
+      alert("分析异常中止，请重试");
     } finally { setIsLoading(false); }
   };
 
@@ -71,104 +71,104 @@ const OutlinePanel: React.FC<{ files: KBFile[], onSaveToKB: (f: KBFile) => void 
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-[#0a0a0c]">
-      {!result && !streamingText && (
-        <div className="flex-1 flex flex-col items-center justify-center p-10 animate-fade-up">
-           <div className="max-w-2xl w-full bg-white/[0.03] border border-white/10 rounded-[3rem] p-12 backdrop-blur-3xl shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/10 blur-[60px] rounded-full"></div>
-              
-              <div className="flex items-center gap-4 mb-10">
-                <div className="w-16 h-16 bg-blue-600 rounded-3xl flex items-center justify-center text-white shadow-xl">
-                  {ICONS.Sparkles}
-                </div>
-                <div>
-                  <h2 className="text-3xl font-black text-white italic tracking-tighter">策划建模中心 Pro</h2>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1">Deep Production Intelligence</p>
+    <div className="flex-1 flex flex-col overflow-hidden bg-[#000000]">
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-10">
+        <div className="max-w-5xl mx-auto space-y-12 pb-24">
+          <div className="card-neo p-12 shadow-2xl animate-fade-up relative overflow-hidden border border-white/10">
+            <div className="absolute top-0 right-0 w-80 h-80 bg-[#2062ee]/10 blur-[100px] rounded-full -mr-32 -mt-32"></div>
+            
+            <div className="flex items-center gap-6 mb-12 relative z-10">
+              <div className="w-16 h-16 bg-[#2062ee] rounded-3xl flex items-center justify-center text-white shadow-2xl">
+                {ICONS.List}
+              </div>
+              <div>
+                <h1 className="text-3xl font-black text-white italic tracking-tighter uppercase">全案大纲提取中心</h1>
+                <p className="text-[10px] font-black text-white/50 uppercase tracking-widest mt-1">Industrial Content Abstraction</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10 relative z-10">
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-white/70 uppercase tracking-widest ml-2">目标原著内容</label>
+                <select value={targetId} onChange={e => setTargetId(e.target.value)} className="input-neo w-full cursor-pointer">
+                  <option value="">选择待提取原著...</option>
+                  {files.filter(f => f.category === Category.PLOT).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+              </div>
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-white/70 uppercase tracking-widest ml-2">参考模板资料 (可选)</label>
+                <select value={refFileId} onChange={e => setRefFileId(e.target.value)} className="input-neo w-full cursor-pointer">
+                  <option value="">选择风格/大纲参考资料...</option>
+                  {files.filter(f => f.id !== targetId).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="bg-white/5 border border-white/10 rounded-[2.5rem] p-8 mb-10 relative z-10">
+              <div className="flex items-center justify-between mb-6 px-2">
+                <label className="text-[10px] font-black text-white/50 uppercase tracking-widest">提取任务模式</label>
+                <div className="flex items-center gap-2">
+                   <span className="text-[9px] font-bold text-white/60 uppercase">深度模式</span>
+                   <button onClick={() => setIsDeepExtraction(!isDeepExtraction)} className={`w-10 h-5 rounded-full transition-all relative ${isDeepExtraction ? 'bg-[#2062ee]' : 'bg-slate-800'}`}>
+                      <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${isDeepExtraction ? 'right-1' : 'left-1'}`} />
+                   </button>
                 </div>
               </div>
-
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black text-slate-500 uppercase ml-2 tracking-widest">选择内容原著</label>
-                    <select value={targetId} onChange={e => setTargetId(e.target.value)} className="w-full p-5 bg-black/40 border border-white/10 text-white rounded-2xl outline-none font-bold text-xs focus:ring-1 focus:ring-blue-500">
-                      <option value="">知识库原著小说...</option>
-                      {files.filter(f => f.category === Category.PLOT).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black text-violet-500 uppercase ml-2 tracking-widest">参考文件 (可选)</label>
-                    <select value={refFileId} onChange={e => setRefFileId(e.target.value)} className="w-full p-5 bg-black/40 border border-violet-500/20 text-violet-400 rounded-2xl outline-none font-bold text-xs focus:ring-1 focus:ring-violet-500">
-                      <option value="">选择参考范本/大纲...</option>
-                      {files.filter(f => f.id !== targetId).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                    <label className="text-[10px] font-black text-slate-500 uppercase ml-2 tracking-widest">任务模式</label>
-                    <div className="flex bg-black/40 p-1.5 rounded-2xl border border-white/5">
-                        <button onClick={() => setAnalysisMode('PLOT_OUTLINE')} className={`flex-1 py-3 text-[10px] font-black uppercase rounded-xl transition-all ${analysisMode === 'PLOT_OUTLINE' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>连载大纲</button>
-                        <button onClick={() => setAnalysisMode('CHARACTERS')} className={`flex-1 py-3 text-[10px] font-black uppercase rounded-xl transition-all ${analysisMode === 'CHARACTERS' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>提取人物</button>
-                        <button onClick={() => setAnalysisMode('CAST_BIO')} className={`flex-1 py-3 text-[10px] font-black uppercase rounded-xl transition-all ${analysisMode === 'CAST_BIO' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>角色小传</button>
-                    </div>
-                </div>
-
-                {analysisMode === 'CAST_BIO' && (
-                  <div className="animate-fade-up">
-                    <label className="text-[10px] font-black text-slate-500 uppercase ml-2 tracking-widest mb-2 block">指定建模人物姓名</label>
-                    <input value={charName} onChange={e => setCharName(e.target.value)} placeholder="输入需建模角色姓名..." className="w-full p-5 bg-black/40 border border-white/10 text-white rounded-2xl outline-none text-xs focus:ring-1 focus:ring-blue-500" />
-                  </div>
-                )}
-
-                <div className="p-6 bg-blue-600/10 border border-blue-500/20 rounded-3xl flex items-center justify-between shadow-inner">
-                   <div className="flex flex-col">
-                     <span className="text-white text-xs font-black italic tracking-tighter uppercase">工业级深度分析模式</span>
-                     <span className="text-slate-500 text-[9px] font-bold uppercase tracking-widest">Automatic Adaptation Enabled</span>
-                   </div>
-                   <div className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${isDeepExtraction ? 'bg-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.4)]' : 'bg-slate-800'}`} onClick={() => setIsDeepExtraction(!isDeepExtraction)}>
-                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${isDeepExtraction ? 'left-7' : 'left-1'}`}></div>
-                   </div>
-                </div>
-
-                <button disabled={isLoading || !targetId} onClick={handleStart} className="w-full bg-blue-600 hover:bg-blue-500 text-white p-6 rounded-[2rem] font-black text-sm uppercase tracking-widest transition-all shadow-2xl flex items-center justify-center gap-3 active:scale-95">
-                  {isLoading ? <div className="animate-spin">{ICONS.Refresh}</div> : ICONS.Play}
-                  {isLoading ? "深度分析建模中..." : "启动全案内容生成"}
-                </button>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                  { id: 'PLOT_OUTLINE', label: '连载大纲', icon: ICONS.List },
+                  { id: 'CHARACTERS', label: '提取人物', icon: ICONS.Users },
+                  { id: 'REF_SCRIPT', label: '风格模板', icon: ICONS.Settings },
+                  { id: 'CAST_BIO', label: '角色小传', icon: ICONS.Brain },
+                ].map(mode => (
+                  <button 
+                    key={mode.id} 
+                    onClick={() => setAnalysisMode(mode.id as any)}
+                    className={`flex flex-col items-center gap-3 p-6 rounded-[2rem] border transition-all ${analysisMode === mode.id ? 'bg-[#2062ee]/20 border-[#2062ee]/50 text-white shadow-xl' : 'bg-white/5 border-white/5 text-white/40 hover:border-white/20 hover:text-white'}`}
+                  >
+                    {mode.icon}
+                    <span className="text-[10px] font-black uppercase tracking-widest">{mode.label}</span>
+                  </button>
+                ))}
               </div>
-           </div>
+            </div>
+
+            <button 
+              disabled={isLoading || !targetId} 
+              onClick={handleStart} 
+              className={`w-full py-6 rounded-3xl font-black text-sm uppercase tracking-widest transition-all shadow-2xl flex items-center justify-center gap-4 ${
+                isLoading ? 'bg-slate-800 text-white/30' : (targetId ? 'bg-[#2062ee] hover:bg-blue-600 text-white shadow-blue-900/40' : 'bg-slate-800 text-white/20')
+              }`}
+            >
+              {isLoading ? <div className="animate-spin">{ICONS.Refresh}</div> : ICONS.Sparkles}
+              {isLoading ? "正在进行神经网络运算..." : (targetId ? "启动全量内容生成" : "请先选择目标原著")}
+            </button>
+          </div>
+
+          {(result || streamingText) && (
+            <div className="card-neo overflow-hidden flex flex-col shadow-2xl animate-fade-up border border-white/10">
+              <div className="p-8 border-b border-white/10 flex justify-between items-center bg-white/[0.02]">
+                <div className="flex items-center gap-4">
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#2062ee] animate-pulse"></div>
+                  <span className="text-[11px] font-black text-white/80 uppercase tracking-widest italic">Industrial Generation Result</span>
+                </div>
+                <div className="flex gap-4">
+                  <button onClick={handleStart} disabled={!!streamingText} className="bg-rose-600/10 hover:bg-rose-600 text-rose-500 hover:text-white px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase transition-all border border-rose-500/20">
+                    {ICONS.Refresh} 重新生成
+                  </button>
+                  <button onClick={handleSaveToKB} disabled={saveStatus || !!streamingText} className={`px-10 py-2.5 rounded-2xl text-[10px] font-black uppercase shadow-2xl transition-all ${saveStatus ? 'bg-emerald-600 text-white' : 'bg-[#2062ee] text-white hover:bg-blue-600 shadow-blue-900/40'}`}>
+                    {saveStatus ? "✓ 已存入库" : "存入资料库"}
+                  </button>
+                </div>
+              </div>
+              <div className="p-16 whitespace-pre-wrap font-sans text-white/90 leading-[2.2] text-lg font-medium italic tracking-wide h-[650px] overflow-y-auto custom-scrollbar bg-black/60 shadow-inner">
+                {streamingText || result}
+                {streamingText && <span className="inline-block w-3 h-7 bg-[#2062ee] ml-2 animate-pulse" />}
+              </div>
+            </div>
+          )}
         </div>
-      )}
-
-      {(result || streamingText) && (
-        <div className="flex-1 flex flex-col min-h-0 animate-fade-up">
-           <div className="h-20 px-10 border-b border-white/5 bg-black/40 backdrop-blur-xl flex justify-between items-center z-10 shadow-xl">
-              <button onClick={() => {setResult(''); setStreamingText('');}} className="text-xs font-black text-slate-500 hover:text-white uppercase flex items-center gap-2 transition-colors">
-                {ICONS.ArrowLeft} 返回控制台
-              </button>
-              <div className="flex gap-4">
-                 <button onClick={handleStart} disabled={!!streamingText} className="px-6 py-3 rounded-2xl bg-rose-600/10 text-rose-500 border border-rose-600/20 text-[11px] font-black uppercase hover:bg-rose-600/20 transition-all flex items-center gap-2">
-                    {ICONS.Refresh} 不满意请重写
-                 </button>
-                 <button onClick={handleSaveToKB} disabled={!!streamingText || saveStatus} className={`px-8 py-3 rounded-2xl text-[11px] font-black uppercase transition-all shadow-xl ${saveStatus ? 'bg-emerald-500 text-white' : 'bg-white/5 text-white hover:bg-white/10 border border-white/10'}`}>
-                    {saveStatus ? "✓ 已存入库" : "存入知识库"}
-                 </button>
-              </div>
-           </div>
-           
-           <div className="flex-1 overflow-y-auto p-12 custom-scrollbar bg-[#050508]">
-              <div className="max-w-4xl mx-auto">
-                <div className="bg-white/[0.02] border border-white/5 rounded-[4rem] p-16 shadow-2xl relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-1 h-full bg-blue-600 opacity-20"></div>
-                  <div className="whitespace-pre-wrap font-sans text-slate-200 leading-[2.2] text-base font-medium italic tracking-wide">
-                    {streamingText || result}
-                    {streamingText && <span className="inline-block w-2.5 h-5 bg-blue-600 ml-2 animate-pulse shadow-[0_0_10px_rgba(37,99,235,0.8)]" />}
-                  </div>
-                </div>
-              </div>
-           </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 };

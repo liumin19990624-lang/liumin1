@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { KBFile, Category } from '../types.ts';
 import { ICONS } from '../constants.tsx';
@@ -13,6 +12,7 @@ const MergePanel: React.FC<MergePanelProps> = ({ files, onSaveToKB }) => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [mergedContent, setMergedContent] = useState<string>('');
   const [isMerging, setIsMerging] = useState(false);
+  const [mergeProgress, setMergeProgress] = useState(0);
   const [mergeTitle, setMergeTitle] = useState('合并作品_' + new Date().toLocaleDateString());
 
   const plotFiles = useMemo(() => files.filter(f => f.category === Category.PLOT), [files]);
@@ -23,7 +23,13 @@ const MergePanel: React.FC<MergePanelProps> = ({ files, onSaveToKB }) => {
     );
   };
 
-  const moveItem = (index: number, direction: 'up' | 'down') => {
+  const deleteFromSelected = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setSelectedIds(prev => prev.filter(i => i !== id));
+  };
+
+  const moveItem = (e: React.MouseEvent, index: number, direction: 'up' | 'down') => {
+    e.stopPropagation();
     const newIds = [...selectedIds];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= newIds.length) return;
@@ -31,15 +37,26 @@ const MergePanel: React.FC<MergePanelProps> = ({ files, onSaveToKB }) => {
     setSelectedIds(newIds);
   };
 
-  const handleMerge = () => {
+  const handleMerge = async () => {
     if (selectedIds.length === 0) return;
     setIsMerging(true);
-    // 核心逻辑：一字不动，按顺序拼接
-    const fullText = selectedIds
-      .map(id => files.find(f => f.id === id)?.content || '')
-      .join('\n\n');
+    setMergeProgress(0);
+    setMergedContent('');
+
+    const total = selectedIds.length;
+    let fullText = '';
     
-    setMergedContent(fullText);
+    for (let i = 0; i < total; i++) {
+      const id = selectedIds[i];
+      const file = files.find(f => f.id === id);
+      if (file) {
+        fullText += `【章节：${file.name}】\n\n${file.content}\n\n`;
+      }
+      setMergeProgress(Math.round(((i + 1) / total) * 100));
+      await new Promise(r => setTimeout(r, 100)); 
+    }
+    
+    setMergedContent(fullText.trim());
     setIsMerging(false);
   };
 
@@ -66,34 +83,39 @@ const MergePanel: React.FC<MergePanelProps> = ({ files, onSaveToKB }) => {
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-[#050508] overflow-hidden">
-      <div className="h-20 px-10 border-b border-white/5 flex items-center justify-between bg-black/40 backdrop-blur-xl shrink-0">
+    <div className="flex-1 flex flex-col bg-[#000000] overflow-hidden">
+      <div className="h-24 px-10 border-b border-white/10 flex items-center justify-between bg-black/80 backdrop-blur-xl shrink-0 z-10">
         <div className="flex flex-col">
-          <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Content Consolidation</span>
-          <h2 className="text-xl font-black text-white italic">原著章节无损合并工具</h2>
+          <span className="text-[10px] font-black text-[#2062ee] uppercase tracking-[0.25em] mb-1 italic">Industrial Merger Tool</span>
+          <h2 className="text-2xl font-black text-white italic tracking-tighter">章节无损合并实验室</h2>
         </div>
         <div className="flex items-center gap-4">
           <input 
             value={mergeTitle} 
             onChange={e => setMergeTitle(e.target.value)} 
-            className="bg-slate-900 border border-white/10 text-white rounded-xl px-4 py-2 text-xs font-bold outline-none focus:border-blue-500 w-64"
-            placeholder="合并后文件名..."
+            className="input-neo w-72"
+            placeholder="命名合并后的档案..."
           />
           <button 
-            disabled={selectedIds.length === 0}
+            disabled={selectedIds.length === 0 || isMerging}
             onClick={handleMerge}
-            className="bg-blue-600 hover:bg-blue-500 disabled:opacity-30 text-white px-6 py-2 rounded-xl font-black text-xs uppercase transition-all shadow-lg"
+            className={`px-10 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl active:scale-95 flex items-center gap-3 ${
+              selectedIds.length === 0 || isMerging ? 'bg-slate-800 text-white/30' : 'bg-[#2062ee] hover:bg-blue-600 text-white shadow-blue-900/40'
+            }`}
           >
-            执行合并
+            {isMerging ? <div className="animate-spin">{ICONS.Refresh}</div> : ICONS.Merge}
+            {isMerging ? `合并中 ${mergeProgress}%` : "执行全量合并"}
           </button>
         </div>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* 左侧：选择与排序 */}
-        <div className="w-96 border-r border-white/5 overflow-y-auto custom-scrollbar p-6 bg-white/[0.02]">
-          <h3 className="text-[10px] font-black text-slate-500 uppercase mb-4 tracking-widest">选择与排序章节</h3>
-          <div className="space-y-3">
+        <aside className="w-[450px] border-r border-white/10 overflow-y-auto custom-scrollbar p-8 bg-white/[0.01]">
+          <div className="flex items-center justify-between mb-8">
+            <h3 className="text-[11px] font-black text-white/60 uppercase tracking-widest italic">选择与排序章节</h3>
+            <button onClick={() => setSelectedIds([])} className="text-[10px] font-black text-rose-500 uppercase hover:text-rose-400 transition-colors">清空已选</button>
+          </div>
+          <div className="space-y-4">
             {plotFiles.map(file => {
               const orderIndex = selectedIds.indexOf(file.id);
               const isSelected = orderIndex !== -1;
@@ -101,53 +123,84 @@ const MergePanel: React.FC<MergePanelProps> = ({ files, onSaveToKB }) => {
                 <div 
                   key={file.id} 
                   onClick={() => toggleFile(file.id)}
-                  className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between group ${
-                    isSelected ? 'bg-blue-600/10 border-blue-500/50' : 'bg-white/5 border-white/5 hover:border-white/20'
+                  className={`p-5 rounded-[1.8rem] border cursor-pointer transition-all flex items-center justify-between group relative overflow-hidden ${
+                    isSelected ? 'bg-[#2062ee]/20 border-[#2062ee]/50 shadow-[0_0_20px_rgba(32,98,238,0.2)]' : 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08] hover:border-white/20'
                   }`}
                 >
-                  <div className="flex items-center gap-3 overflow-hidden">
-                    <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black ${isSelected ? 'bg-blue-600 text-white' : 'bg-white/10 text-slate-500'}`}>
-                      {isSelected ? orderIndex + 1 : '+'}
+                  <div className="flex items-center gap-4 relative z-10">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-[13px] font-black transition-all ${isSelected ? 'bg-[#2062ee] text-white shadow-lg shadow-blue-900/40' : 'bg-white/10 text-white/40 group-hover:text-white'}`}>
+                      {isSelected ? orderIndex + 1 : ICONS.Plus}
                     </div>
-                    <span className="text-xs font-bold text-white truncate">{file.name}</span>
+                    <div className="flex flex-col">
+                      <span className="text-sm font-black text-white italic truncate max-w-[200px]">{file.name}</span>
+                      <span className="text-[10px] font-bold text-white/40 uppercase mt-1 tracking-widest">{file.content.length.toLocaleString()} 字</span>
+                    </div>
                   </div>
+                  
                   {isSelected && (
-                    <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={(e) => { e.stopPropagation(); moveItem(orderIndex, 'up'); }} className="text-slate-500 hover:text-white">{ICONS.ChevronLeft}</button>
-                      <button onClick={(e) => { e.stopPropagation(); moveItem(orderIndex, 'down'); }} className="text-slate-500 hover:text-white">{ICONS.ChevronRight}</button>
+                    <div className="flex items-center gap-1 relative z-10 opacity-0 group-hover:opacity-100 transition-all">
+                      <button onClick={(e) => moveItem(e, orderIndex, 'up')} disabled={orderIndex === 0} className="p-2 text-white hover:text-[#2062ee] disabled:opacity-10 transition-colors">
+                        {ICONS.ChevronUp}
+                      </button>
+                      <button onClick={(e) => moveItem(e, orderIndex, 'down')} disabled={orderIndex === selectedIds.length - 1} className="p-2 text-white hover:text-[#2062ee] disabled:opacity-10 transition-colors">
+                        {ICONS.ChevronDown}
+                      </button>
+                      <button onClick={(e) => deleteFromSelected(e, file.id)} className="p-2 text-rose-500 hover:text-rose-400 transition-colors">
+                        {ICONS.Trash}
+                      </button>
                     </div>
                   )}
                 </div>
               );
             })}
           </div>
-        </div>
+        </aside>
 
-        {/* 右侧：预览与导出 */}
-        <div className="flex-1 flex flex-col min-h-0 bg-black">
+        <div className="flex-1 flex flex-col min-h-0 bg-black relative">
+          {isMerging && (
+            <div className="absolute inset-0 z-20 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-20 text-center animate-fade-up">
+              <div className="w-24 h-24 mb-8 bg-[#2062ee]/20 border border-[#2062ee]/40 rounded-full flex items-center justify-center text-[#2062ee] shadow-[0_0_40px_rgba(32,98,238,0.2)]">
+                <div className="scale-150 animate-pulse flex items-center justify-center">
+                  {ICONS.Layers}
+                </div>
+              </div>
+              <h4 className="text-2xl font-black text-white italic tracking-tighter uppercase mb-4">正在进行全量拼接...</h4>
+              <div className="w-64 h-1.5 bg-white/10 rounded-full overflow-hidden mb-4">
+                <div className="h-full bg-[#2062ee] transition-all duration-300 shadow-[0_0_15px_rgba(32,98,238,0.5)]" style={{ width: `${mergeProgress}%` }}></div>
+              </div>
+              <p className="text-[11px] font-black text-white/50 uppercase tracking-widest">章节合并进度 {mergeProgress}%</p>
+            </div>
+          )}
+
           {mergedContent ? (
             <>
-              <div className="p-4 border-b border-white/5 flex gap-4 justify-end bg-white/[0.03]">
-                <button onClick={handleDownloadDocx} className="bg-white/5 hover:bg-white/10 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase flex items-center gap-2">
-                  {ICONS.Download} DOCX
-                </button>
-                <button onClick={handleDownloadTxt} className="bg-white/5 hover:bg-white/10 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase flex items-center gap-2">
-                  {ICONS.Download} TXT
-                </button>
-                <button onClick={handleSaveToKB} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase flex items-center gap-2">
-                  存入资料库
-                </button>
+              <div className="p-6 border-b border-white/10 flex gap-4 justify-between items-center bg-white/[0.04]">
+                <div className="flex items-center gap-3">
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_100px_rgba(16,185,129,0.5)]"></div>
+                  <span className="text-[11px] font-black text-white uppercase tracking-widest italic">合并预览 ({mergedContent.length.toLocaleString()} 字)</span>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={handleDownloadDocx} className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 border border-white/20 transition-all">
+                    {ICONS.Download} DOCX
+                  </button>
+                  <button onClick={handleDownloadTxt} className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 border border-white/20 transition-all">
+                    {ICONS.Download} TXT
+                  </button>
+                  <button onClick={handleSaveToKB} className="bg-[#2062ee] hover:bg-blue-600 text-white px-6 py-2.5 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 shadow-lg shadow-blue-900/40 transition-all">
+                    存入资料库
+                  </button>
+                </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-12 custom-scrollbar">
-                <div className="max-w-4xl mx-auto whitespace-pre-wrap font-sans text-slate-400 leading-relaxed text-sm italic">
+              <div className="flex-1 overflow-y-auto p-16 custom-scrollbar bg-black">
+                <div className="max-w-4xl mx-auto whitespace-pre-wrap font-sans text-white/90 leading-[2.2] text-lg font-medium italic tracking-wide">
                   {mergedContent}
                 </div>
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center opacity-20">
-              <div className="scale-[3] mb-8">{ICONS.Layers}</div>
-              <p className="text-xs font-black uppercase tracking-widest">请在左侧选择章节并执行合并</p>
+            <div className="flex-1 flex flex-col items-center justify-center opacity-20 gap-4">
+              <div className="scale-[4] text-white/10">{ICONS.Layers}</div>
+              <p className="text-xs font-black uppercase tracking-[0.4em] italic text-white/20">请在左侧选择章节并执行合并</p>
             </div>
           )}
         </div>

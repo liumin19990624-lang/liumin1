@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ScriptBlock, SceneImage, CharacterAsset, AmbientAtmosphere } from '../types';
 import { ICONS } from '../constants';
@@ -73,9 +72,9 @@ const CinematicPreview: React.FC<CinematicPreviewProps> = ({ block, characterAss
         <div className="flex flex-col">
           <h2 className="text-white text-lg font-black italic tracking-tighter uppercase">Cinematic Pre-viz</h2>
           <div className="flex items-center gap-2 mt-1">
-            <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Est. Length: {totalDuration}s</span>
-            <div className="w-1 h-1 rounded-full bg-slate-700"></div>
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{shots.length} Shots</span>
+            <span className="text-[10px] font-black text-[#2062ee] uppercase tracking-widest">Est. Length: {totalDuration}s</span>
+            <div className="w-1 h-1 rounded-full bg-white/20"></div>
+            <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">{shots.length} Shots</span>
           </div>
         </div>
       </div>
@@ -84,20 +83,20 @@ const CinematicPreview: React.FC<CinematicPreviewProps> = ({ block, characterAss
         {ICONS.Trash}
       </button>
 
-      <div className="w-full max-w-5xl aspect-video bg-[#050508] rounded-[3rem] overflow-hidden shadow-[0_0_100px_rgba(59,130,246,0.15)] relative border-4 border-white/5">
+      <div className="w-full max-w-5xl aspect-video bg-black rounded-[3rem] overflow-hidden shadow-[0_0_100px_rgba(32,98,238,0.1)] relative border-4 border-white/10">
         {shots[currentShotIndex]?.video ? (
           <video key={currentShotIndex} src={shots[currentShotIndex].video} autoPlay loop muted className="w-full h-full object-cover animate-in fade-in duration-500" />
         ) : shots[currentShotIndex]?.image ? (
           <img key={currentShotIndex} src={shots[currentShotIndex].image} className="w-full h-full object-cover animate-in zoom-in-105 fade-in duration-1000" alt="shot" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-slate-800 text-[10px] font-black uppercase tracking-widest opacity-20">Rendering Frame...</div>
+          <div className="w-full h-full flex items-center justify-center text-white/10 text-[10px] font-black uppercase tracking-widest">Rendering Frame...</div>
         )}
 
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"></div>
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80"></div>
         <div className="absolute bottom-10 left-10 right-10">
           {shots[currentShotIndex]?.audio.map((a: any, i: number) => (
             <div key={i} className="animate-in slide-in-from-left fade-in duration-500">
-               <span className="text-blue-500 text-[9px] font-black uppercase tracking-widest block mb-1">{a.name}</span>
+               <span className="text-[#2062ee] text-[9px] font-black uppercase tracking-widest block mb-1">{a.name}</span>
                <p className="text-white text-3xl font-medium tracking-tighter italic leading-tight">“{a.text}”</p>
             </div>
           ))}
@@ -106,7 +105,7 @@ const CinematicPreview: React.FC<CinematicPreviewProps> = ({ block, characterAss
 
       <div className="mt-10 flex items-center gap-12">
         <button onClick={() => setCurrentShotIndex(Math.max(0, currentShotIndex - 1))} className="text-white/20 hover:text-white transition-all scale-150">{ICONS.ChevronLeft}</button>
-        <button onClick={() => setIsPlaying(!isPlaying)} className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-2xl ${isPlaying ? 'bg-white text-black' : 'bg-blue-600 text-white'}`}>
+        <button onClick={() => setIsPlaying(!isPlaying)} className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-2xl ${isPlaying ? 'bg-white text-black' : 'bg-[#2062ee] text-white'}`}>
           <div className="scale-[2]">{isPlaying ? <div className="w-4 h-4 bg-current" /> : ICONS.Play}</div>
         </button>
         <button onClick={() => setCurrentShotIndex(Math.min(shots.length - 1, currentShotIndex + 1))} className="text-white/20 hover:text-white transition-all scale-150">{ICONS.ChevronRight}</button>
@@ -114,10 +113,10 @@ const CinematicPreview: React.FC<CinematicPreviewProps> = ({ block, characterAss
 
       <div className="mt-12 w-full max-w-5xl bg-white/5 border border-white/10 rounded-3xl p-6 overflow-hidden flex flex-col gap-4">
         <div className="flex items-center justify-between px-2">
-          <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic">Production Timeline 编辑器</span>
+          <span className="text-[9px] font-black text-white/40 uppercase tracking-widest italic">Production Timeline 编辑器</span>
           <div className="flex gap-4">
-             <button onClick={() => adjustDuration(currentShotIndex, -0.5)} className="text-white/40 hover:text-blue-500 text-[10px] font-black uppercase">缩短镜头 -0.5s</button>
-             <button onClick={() => adjustDuration(currentShotIndex, 0.5)} className="text-white/40 hover:text-blue-500 text-[10px] font-black uppercase">延长镜头 +0.5s</button>
+             <button onClick={() => adjustDuration(currentShotIndex, -0.5)} className="text-white/60 hover:text-[#2062ee] text-[10px] font-black uppercase">缩短镜头 -0.5s</button>
+             <button onClick={() => adjustDuration(currentShotIndex, 0.5)} className="text-white/60 hover:text-[#2062ee] text-[10px] font-black uppercase">延长镜头 +0.5s</button>
           </div>
         </div>
         <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
@@ -125,7 +124,7 @@ const CinematicPreview: React.FC<CinematicPreviewProps> = ({ block, characterAss
             <div 
               key={i} 
               onClick={() => setCurrentShotIndex(i)}
-              className={`h-12 rounded-xl transition-all cursor-pointer border flex items-center justify-center text-[10px] font-mono ${i === currentShotIndex ? 'bg-blue-600 border-blue-400 text-white shadow-lg' : 'bg-white/5 border-white/5 text-slate-500'}`}
+              className={`h-12 rounded-xl transition-all cursor-pointer border flex items-center justify-center text-[10px] font-mono ${i === currentShotIndex ? 'bg-[#2062ee] border-white/20 text-white shadow-lg' : 'bg-white/5 border-white/5 text-white/20'}`}
               style={{ minWidth: `${(shot.duration / 1000) * 15}px`, flexShrink: 0 }}
             >
               {shot.duration / 1000}s

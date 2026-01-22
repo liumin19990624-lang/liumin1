@@ -16,8 +16,17 @@ export default function Home() {
   const [files, setFiles] = useState<KBFile[]>([]);
   const [credits, setCredits] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasPersonalKey, setHasPersonalKey] = useState(false);
   
   useEffect(() => {
+    const checkKey = async () => {
+      if (typeof window !== 'undefined' && window.aistudio) {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        setHasPersonalKey(hasKey);
+      }
+    };
+    checkKey();
+    
     const fetchData = async () => {
       if (!userId) {
         setIsLoading(false);
@@ -76,6 +85,14 @@ export default function Home() {
     }
   }, [userId]);
 
+  const handleOpenKeyDialog = async () => {
+    if (typeof window !== 'undefined' && window.aistudio) {
+      await window.aistudio.openSelectKey();
+      // 假设选择成功，更新状态
+      setHasPersonalKey(true);
+    }
+  };
+
   const handleFileUpload = async (newFiles: KBFile[]) => {
     const savedResults: KBFile[] = [];
     for (const file of newFiles) {
@@ -121,6 +138,24 @@ export default function Home() {
         </div>
         
         <div className="flex items-center gap-6">
+          {/* API Key Status / Management */}
+          <button 
+            onClick={handleOpenKeyDialog}
+            className={`flex items-center gap-3 px-4 py-1.5 rounded-full border transition-all hover:scale-105 active:scale-95 ${
+              hasPersonalKey ? 'bg-indigo-500/10 border-indigo-500/50 text-indigo-400' : 'bg-white/5 border-white/10 text-slate-400'
+            }`}
+          >
+            <div className={hasPersonalKey ? 'text-indigo-500' : 'text-slate-600'}>
+              {ICONS.Key}
+            </div>
+            <div className="flex flex-col items-start">
+              <span className="text-[8px] font-black text-slate-500 uppercase leading-none">Power Source</span>
+              <span className="text-[10px] font-black leading-none uppercase tracking-tighter">
+                {hasPersonalKey ? 'Personal Pro' : 'Shared Cloud'}
+              </span>
+            </div>
+          </button>
+
           <div className={`flex items-center gap-3 px-4 py-1.5 rounded-full border transition-all ${
             credits !== null && credits < 10 ? 'bg-rose-500/10 border-rose-500/50 text-rose-400' : 'bg-white/5 border-white/10 text-slate-300'
           }`}>

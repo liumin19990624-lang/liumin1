@@ -1,7 +1,6 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { ICONS } from '../constants.tsx';
-import { ScriptBlock, KBFile, Category, ModelType, SceneImage } from '../types.ts';
+import { ScriptBlock, KBFile, Category, ModelType } from '../types.ts';
 import { GeminiService } from '../services/geminiService.ts';
 
 interface ShotEntry {
@@ -11,6 +10,7 @@ interface ShotEntry {
   visual: string;
   dialogue: string;
   prompt: string;
+  sourceText: string;
   previewUrl?: string;
   videoUrl?: string;
   isGenerating?: boolean;
@@ -29,7 +29,6 @@ const ShotsPanel: React.FC<ShotsPanelProps> = ({ sourceBlocks, files, onSaveToKB
   const [streamingText, setStreamingText] = useState('');
   const [shotList, setShotList] = useState<string>('');
   const [saveStatus, setSaveStatus] = useState(false);
-  const [expandedShot, setExpandedShot] = useState<string | null>(null);
   const [renderedShots, setRenderedShots] = useState<Record<string, Partial<ShotEntry>>>({});
 
   const gemini = useMemo(() => new GeminiService(), []);
@@ -53,7 +52,7 @@ const ShotsPanel: React.FC<ShotsPanelProps> = ({ sourceBlocks, files, onSaveToKB
       }
       setShotList(full);
     } catch (e) {
-      alert("分镜生成中断");
+      alert("解析失败，请检查 API 配置或网络状况。");
     } finally {
       setIsGeneratingList(false);
     }
@@ -65,7 +64,7 @@ const ShotsPanel: React.FC<ShotsPanelProps> = ({ sourceBlocks, files, onSaveToKB
     
     return content.split('\n')
       .map(line => line.trim())
-      .filter(line => line.includes('|') && !line.includes('镜号') && !line.includes('---'))
+      .filter(line => line.includes('|') && !line.includes('镜号'))
       .map(line => {
         const parts = line.split('|').map(s => s.trim());
         const id = parts[0] || '?';
@@ -73,9 +72,10 @@ const ShotsPanel: React.FC<ShotsPanelProps> = ({ sourceBlocks, files, onSaveToKB
           id, 
           duration: parts[1] || '3s', 
           technical: parts[2] || '常规镜头', 
-          visual: parts[3] || '画面描述缺失', 
+          visual: parts[3] || '（画面内容缺失）', 
           dialogue: parts[4] || '（无）',
           prompt: parts[5] || '',
+          sourceText: parts[6] || '（未关联原文）',
           ...renderedShots[id]
         };
       });
@@ -84,7 +84,8 @@ const ShotsPanel: React.FC<ShotsPanelProps> = ({ sourceBlocks, files, onSaveToKB
   const generateShotPreview = async (shot: ShotEntry) => {
     setRenderedShots(prev => ({ ...prev, [shot.id]: { ...prev[shot.id], isGenerating: true } }));
     try {
-      const img = await gemini.generateShotImage(shot.visual, shot.technical);
+      const targetPrompt = shot.prompt || shot.visual;
+      const img = await gemini.generateShotImage(targetPrompt, shot.technical);
       setRenderedShots(prev => ({ ...prev, [shot.id]: { ...prev[shot.id], previewUrl: img, isGenerating: false } }));
     } catch (e) {
       setRenderedShots(prev => ({ ...prev, [shot.id]: { ...prev[shot.id], isGenerating: false } }));
@@ -92,14 +93,10 @@ const ShotsPanel: React.FC<ShotsPanelProps> = ({ sourceBlocks, files, onSaveToKB
   };
 
   const generateShotVideo = async (shot: ShotEntry) => {
-    if (!shot.previewUrl) {
-      alert("请先生成样图，视频生成需要起始帧图片。");
-      return;
-    }
+    if (!shot.previewUrl) return;
     setRenderedShots(prev => ({ ...prev, [shot.id]: { ...prev[shot.id], isGenerating: true } }));
     try {
       const opId = await gemini.triggerVideoGeneration(shot.previewUrl, shot.prompt || shot.visual);
-      
       const poll = setInterval(async () => {
         const status = await gemini.pollVideoStatus(opId);
         if (status.done && status.videoUrl) {
@@ -116,42 +113,38 @@ const ShotsPanel: React.FC<ShotsPanelProps> = ({ sourceBlocks, files, onSaveToKB
     const finalContent = shotList || streamingText;
     if (!finalContent) return;
     const block = sourceBlocks.find(b => b.id === selectedBlockId);
-    const newFile: KBFile = {
+    onSaveToKB({
       id: Math.random().toString(36).substr(2, 9),
-      name: `[分镜] ${block?.episodes || '未命名'}`,
+      name: `[分镜脚本] ${block?.episodes || '待定集数'}`,
       category: Category.REFERENCE,
       content: finalContent,
       uploadDate: new Date().toISOString()
-    };
-    onSaveToKB(newFile);
+    });
     setSaveStatus(true);
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-[#020203] overflow-hidden text-slate-300">
-      <div className="h-28 px-10 border-b border-white/5 flex items-center justify-between bg-black/60 backdrop-blur-3xl shrink-0">
+    <div className="flex-1 flex flex-col bg-[#000000] overflow-hidden text-white/90">
+      <div className="h-28 px-10 border-b border-white/10 flex items-center justify-between bg-black/80 backdrop-blur-3xl shrink-0">
         <div className="flex flex-col">
-          <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest italic mb-1">Cine-Industrial Workflow</span>
-          <h2 className="text-2xl font-black text-white italic tracking-tighter">工业分镜实验室</h2>
+          <span className="text-[10px] font-black text-[#2062ee] uppercase tracking-[0.2em] mb-1 italic">Industrial Visualization Lab</span>
+          <h2 className="text-2xl font-black italic tracking-tighter uppercase">工业分镜导演控制台 Pro</h2>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex flex-col gap-1">
-            <span className="text-[9px] font-black text-slate-500 uppercase ml-2 tracking-widest">选择剧本单元</span>
-            <select value={selectedBlockId} onChange={e => setSelectedBlockId(e.target.value)} className="bg-slate-900 border border-white/10 text-white rounded-xl px-4 py-3 text-xs font-bold outline-none w-64">
+            <span className="text-[9px] font-black text-white/30 uppercase ml-2 tracking-widest">选择待拆解剧集</span>
+            <select value={selectedBlockId} onChange={e => setSelectedBlockId(e.target.value)} className="input-neo w-64">
               <option value="">指向待拆解剧本单元...</option>
               {sourceBlocks.map(b => <option key={b.id} value={b.id}>{b.episodes}</option>)}
             </select>
           </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-[9px] font-black text-violet-400 uppercase ml-2 tracking-widest">风格参考资料 (可选)</span>
-            <select value={refFileId} onChange={e => setRefFileId(e.target.value)} className="bg-slate-900 border border-violet-500/20 text-violet-400 rounded-xl px-4 py-3 text-xs font-bold outline-none w-64">
-              <option value="">选择分镜风格参考...</option>
-              {files.filter(f => f.category === Category.REFERENCE).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
-          </div>
-          <button disabled={isGeneratingList || !selectedBlockId} onClick={handleGenerateShots} className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase flex items-center gap-3 transition-all active:scale-95 shadow-lg mt-4">
+          <button 
+            disabled={isGeneratingList || !selectedBlockId} 
+            onClick={handleGenerateShots} 
+            className="bg-[#2062ee] hover:bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase flex items-center gap-3 transition-all active:scale-95 shadow-lg mt-4 shadow-blue-900/40"
+          >
             {isGeneratingList ? <div className="animate-spin">{ICONS.Refresh}</div> : ICONS.Play}
-            开始拆解
+            启动分镜自动化解析
           </button>
         </div>
       </div>
@@ -160,61 +153,134 @@ const ShotsPanel: React.FC<ShotsPanelProps> = ({ sourceBlocks, files, onSaveToKB
         {!shotList && !streamingText ? (
           <div className="h-full flex flex-col items-center justify-center opacity-20 gap-4">
             <div className="scale-[3]">{ICONS.Camera}</div>
-            <p className="text-xs font-black uppercase tracking-widest">请在上方选择单元以生成分镜表</p>
+            <p className="text-xs font-black uppercase tracking-[0.4em] italic text-white/40">请在控制台上方指定剧本单元</p>
           </div>
         ) : (
-          <div className="max-w-6xl mx-auto space-y-6">
+          <div className="max-w-7xl mx-auto space-y-12 pb-32">
             {parsedShots.map((shot, idx) => (
-              <div key={idx} className="bg-white/[0.02] border border-white/5 rounded-[2.5rem] overflow-hidden group hover:border-white/10 transition-all">
-                <div className="grid grid-cols-12 gap-6 p-8">
-                  <div className="col-span-1">
-                    <div className="text-2xl font-black italic text-blue-500/40">#{shot.id}</div>
-                    <div className="text-[10px] font-black text-slate-500 mt-2">{shot.duration}</div>
-                  </div>
-                  <div className="col-span-3">
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      {shot.technical.split('、').map((t, ti) => (
-                        <span key={ti} className="px-2 py-1 bg-blue-600/10 border border-blue-500/20 text-blue-400 text-[9px] font-black rounded italic uppercase">
-                          {t}
-                        </span>
-                      ))}
+              <div key={idx} className="card-neo overflow-hidden border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] transition-all animate-fade-up">
+                <div className="grid grid-cols-12">
+                  {/* 镜号与时长区块 */}
+                  <div className="col-span-1 border-r border-white/5 p-6 flex flex-col items-center justify-center bg-white/[0.02]">
+                    <div className="text-4xl font-black italic text-[#2062ee]">#{shot.id}</div>
+                    <div className="text-[10px] font-black text-white/30 mt-4 flex items-center gap-1 uppercase tracking-widest">
+                      {ICONS.Clock} {shot.duration}
                     </div>
                   </div>
-                  <div className="col-span-4">
-                    <p className="text-sm font-medium leading-relaxed italic text-white/90">{shot.visual}</p>
-                    <div className="mt-4 p-4 bg-black/40 rounded-2xl border border-white/5">
-                      <p className="text-xs text-slate-400 font-sans italic">{shot.dialogue}</p>
+
+                  {/* 核心导演指令区块 */}
+                  <div className="col-span-7 p-10 space-y-8">
+                    {/* 关联原文 (Industrial traceability) */}
+                    <div className="space-y-2">
+                       <label className="text-[9px] font-black text-white/20 uppercase tracking-[0.3em] flex items-center gap-2">
+                         {ICONS.FileText} 关联原著上下文 (Source Reference)
+                       </label>
+                       <div className="bg-black/40 p-5 rounded-2xl border border-white/5 shadow-inner">
+                         <p className="text-xs text-white/40 italic leading-relaxed font-medium">
+                           “{shot.sourceText}”
+                         </p>
+                       </div>
+                    </div>
+
+                    {/* 技术参数与台词分布 */}
+                    <div className="grid grid-cols-2 gap-8">
+                      <div className="space-y-3">
+                        <label className="text-[9px] font-black text-[#2062ee] uppercase tracking-[0.3em] block">镜头技术指令 (Director Spec)</label>
+                        <div className="flex flex-wrap gap-2">
+                          {shot.technical.split(/[、,，\s]/).filter(Boolean).map((t, ti) => (
+                            <span key={ti} className="px-3 py-1 bg-[#2062ee]/10 border border-[#2062ee]/20 text-[#2062ee] text-[10px] font-black rounded-lg italic">
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        <label className="text-[9px] font-black text-rose-500 uppercase tracking-[0.3em] block">同步角色台词 (Dialogue)</label>
+                        <p className="text-sm font-bold text-white italic tracking-tight">“{shot.dialogue}”</p>
+                      </div>
+                    </div>
+
+                    {/* 视觉详细描写 */}
+                    <div className="space-y-3">
+                      <label className="text-[9px] font-black text-emerald-500 uppercase tracking-[0.3em] block">分镜可视化描写 (Visual Narrative)</label>
+                      <p className="text-sm font-medium leading-relaxed italic text-white/90 bg-emerald-500/5 p-5 rounded-2xl border border-emerald-500/10 shadow-inner">
+                        {shot.visual}
+                      </p>
+                    </div>
+
+                    {/* AI提示词 (Engineering bridge) */}
+                    <div className="space-y-3">
+                      <label className="text-[9px] font-black text-blue-400/50 uppercase tracking-[0.3em] block flex items-center gap-2">
+                        {ICONS.Sparkles} 工业绘图底层指令 (Prompt Engine)
+                      </label>
+                      <div className="bg-blue-600/5 border border-blue-500/10 p-5 rounded-2xl">
+                        <p className="text-[10px] font-mono text-blue-300/60 leading-relaxed break-all">
+                          {shot.prompt || "Pending engineering..."}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                  <div className="col-span-4 flex flex-col gap-3">
-                    <div className="aspect-video bg-black/60 rounded-2xl border border-white/10 overflow-hidden relative group/frame">
+
+                  {/* 预览与生成区 */}
+                  <div className="col-span-4 border-l border-white/5 p-8 bg-black/40 flex flex-col gap-6">
+                    <div className="aspect-video bg-slate-950 rounded-[2.5rem] border border-white/10 overflow-hidden relative shadow-2xl group">
                       {shot.videoUrl ? (
                         <video src={shot.videoUrl} autoPlay loop muted className="w-full h-full object-cover" />
                       ) : shot.previewUrl ? (
-                        <img src={shot.previewUrl} className="w-full h-full object-cover" />
+                        <img src={shot.previewUrl} className="w-full h-full object-cover" alt="shot preview" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-[9px] font-black uppercase tracking-widest text-slate-700">Frame Not Rendered</div>
+                        <div className="w-full h-full flex flex-col items-center justify-center gap-3 opacity-20">
+                           <div className="scale-[2]">{ICONS.Image}</div>
+                           <span className="text-[9px] font-black uppercase tracking-[0.3em]">Frame Pending</span>
+                        </div>
                       )}
+                      
                       {shot.isGenerating && (
-                        <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-10">
-                          <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                        <div className="absolute inset-0 bg-black/80 backdrop-blur-lg flex items-center justify-center z-10">
+                          <div className="flex flex-col items-center gap-4">
+                             <div className="w-10 h-10 border-2 border-[#2062ee] border-t-transparent rounded-full animate-spin"></div>
+                             <span className="text-[8px] font-black uppercase tracking-widest text-[#2062ee] animate-pulse">Rendering Pipeline...</span>
+                          </div>
                         </div>
                       )}
                     </div>
-                    <div className="flex gap-2">
-                       <button onClick={() => generateShotPreview(shot)} disabled={shot.isGenerating} className="flex-1 py-2 bg-white/5 hover:bg-white/10 text-[9px] font-black uppercase rounded-xl border border-white/5 transition-all">渲染样图</button>
-                       <button onClick={() => generateShotVideo(shot)} disabled={shot.isGenerating || !shot.previewUrl} className="flex-1 py-2 bg-blue-600/10 hover:bg-blue-600 text-[9px] font-black uppercase rounded-xl border border-blue-600/20 transition-all">生成 3S 动态</button>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                       <button 
+                         onClick={() => generateShotPreview(shot)} 
+                         disabled={shot.isGenerating} 
+                         className="py-4 bg-white/5 hover:bg-white/10 text-white/40 hover:text-white text-[10px] font-black uppercase rounded-2xl border border-white/10 transition-all flex items-center justify-center gap-2 active:scale-95"
+                       >
+                         {ICONS.Image} 渲染样图
+                       </button>
+                       <button 
+                         onClick={() => generateShotVideo(shot)} 
+                         disabled={shot.isGenerating || !shot.previewUrl} 
+                         className={`py-4 text-[10px] font-black uppercase rounded-2xl border transition-all flex items-center justify-center gap-2 active:scale-95 ${
+                           !shot.previewUrl ? 'bg-white/5 text-white/10 border-white/5 cursor-not-allowed' : 'bg-[#2062ee]/10 hover:bg-[#2062ee] text-blue-400 hover:text-white border-[#2062ee]/20'
+                         }`}
+                       >
+                         {ICONS.Play} 动态视频
+                       </button>
                     </div>
                   </div>
                 </div>
               </div>
             ))}
-            <div className="py-20 flex justify-center gap-6">
-               <button onClick={handleGenerateShots} disabled={isGeneratingList} className="px-12 py-4 rounded-3xl font-black text-xs uppercase shadow-xl transition-all bg-rose-600/10 text-rose-500 border border-rose-500/20 hover:bg-rose-600/20">
-                  不满意重新生成
-               </button>
-               <button onClick={handleSaveToKB} disabled={saveStatus} className={`px-12 py-4 rounded-3xl font-black text-xs uppercase shadow-2xl transition-all ${saveStatus ? 'bg-emerald-600 text-white' : 'bg-white text-black hover:bg-blue-600 hover:text-white'}`}>
-                  {saveStatus ? "✓ 已存入影视库" : "保存全案分镜表"}
+
+            <div className="py-24 flex justify-center gap-8">
+               <button 
+                 onClick={handleSaveToKB} 
+                 disabled={saveStatus || (!shotList && !streamingText)} 
+                 className={`px-16 py-6 rounded-[2.5rem] font-black text-sm uppercase shadow-2xl transition-all flex items-center gap-4 active:scale-95 ${
+                   saveStatus ? 'bg-emerald-600 text-white shadow-emerald-900/40' : 'bg-[#2062ee] text-white hover:bg-blue-600 shadow-blue-900/40'
+                 }`}
+               >
+                  {saveStatus ? "✓ 分镜脚本全案已归档" : (
+                    <>
+                      {ICONS.Check} 导出工业分镜全案报告
+                    </>
+                  )}
                </button>
             </div>
           </div>

@@ -1,85 +1,155 @@
-
 <!DOCTYPE html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>漫剧剧本智能适配大师 - 专业级网文改编平台</title>
+    <title>漫剧剧本智能适配大师 - 专业级网文改编 platform</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                DEFAULT: '#2062ee',
+                accent: '#2062ee',
+              },
+              blue: {
+                50: '#eef4ff',
+                100: '#dae7ff',
+                200: '#bdd3ff',
+                300: '#90b4ff',
+                400: '#5c8aff',
+                500: '#2062ee',
+                600: '#1d58d6',
+                700: '#194abd',
+                800: '#153ca1',
+                900: '#112e85',
+                950: '#0b1d54',
+              },
+              indigo: { DEFAULT: '#2062ee', 500: '#2062ee', 600: '#1d58d6' },
+              violet: { DEFAULT: '#2062ee', 500: '#2062ee', 600: '#1d58d6' },
+              slate: {
+                900: '#000000',
+                950: '#000000',
+              }
+            }
+          }
+        }
+      }
+    </script>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap');
       
       :root {
-        --brand-primary: #1e293b;
-        --brand-accent: #3b82f6;
+        --brand-primary: #000000;
+        --brand-accent: #2062ee;
+        --text-primary: #ffffff;
+        --text-secondary: rgba(255, 255, 255, 0.75);
+        --surface-1: rgba(255, 255, 255, 0.05);
+        --surface-2: rgba(255, 255, 255, 0.1);
       }
 
       body {
         font-family: 'Noto Sans SC', sans-serif;
-        background-color: #f8fafc;
-        background-image: 
-          radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.05) 0px, transparent 50%),
-          radial-gradient(at 50% 0%, rgba(99, 102, 241, 0.05) 0px, transparent 50%),
-          radial-gradient(at 100% 0%, rgba(236, 72, 153, 0.05) 0px, transparent 50%);
-        color: #1e293b;
+        background-color: #000000;
+        color: #ffffff;
+        overflow: hidden;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
       }
 
-      .glass-effect {
-        background: rgba(255, 255, 255, 0.85);
-        backdrop-filter: blur(16px) saturate(180%);
-        border: 1px solid rgba(255, 255, 255, 0.4);
+      .glass-dark {
+        background: rgba(0, 0, 0, 0.9);
+        backdrop-filter: blur(24px) saturate(180%);
+        border: 1px solid rgba(255, 255, 255, 0.15);
       }
 
-      .card-shadow {
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+      .card-neo {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 2rem;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .card-neo:hover {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.3);
+        transform: translateY(-2px);
+        box-shadow: 0 20px 50px -12px rgba(0,0,0,1);
       }
 
       .custom-scrollbar::-webkit-scrollbar {
-        width: 6px;
+        width: 8px;
       }
       .custom-scrollbar::-webkit-scrollbar-track {
-        background: transparent;
+        background: #000000;
       }
       .custom-scrollbar::-webkit-scrollbar-thumb {
-        background: #e2e8f0;
+        background: rgba(255, 255, 255, 0.3);
         border-radius: 10px;
+        border: 2px solid #000000;
+        background-clip: content-box;
       }
       .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-        background: #cbd5e1;
+        background: rgba(255, 255, 255, 0.5);
       }
 
       @keyframes fade-up {
-        from { opacity: 0; transform: translateY(10px); }
+        from { opacity: 0; transform: translateY(16px); }
         to { opacity: 1; transform: translateY(0); }
       }
       .animate-fade-up {
-        animation: fade-up 0.4s ease-out forwards;
+        animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
       }
 
-      .sidebar-item-active {
-        background: var(--brand-primary);
-        color: white;
-        box-shadow: 0 10px 15px -3px rgba(30, 41, 59, 0.25);
+      .input-neo {
+        background: #000000 !important;
+        border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        border-radius: 1.25rem !important;
+        padding: 0.85rem 1.25rem !important;
+        color: #ffffff !important;
+        font-size: 0.9rem !important;
+        outline: none !important;
+        transition: all 0.2s !important;
+      }
+      .input-neo:focus {
+        border-color: #2062ee !important;
+        box-shadow: 0 0 0 4px rgba(32, 98, 238, 0.3) !important;
+      }
+
+      .btn-neo {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.6rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .btn-neo:hover:not(:disabled) {
+        transform: translateY(-2px);
+        filter: brightness(1.2);
       }
     </style>
-    <script type="importmap">
+  <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
     "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
-    "@google/genai": "https://esm.sh/@google/genai@^1.37.0",
+    "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.91.0",
+    "next/": "https://esm.sh/next@^16.1.4/",
+    "mammoth": "https://esm.sh/mammoth@^1.11.0",
     "docx": "https://esm.sh/docx@^9.5.1",
-    "mammoth": "https://esm.sh/mammoth@^1.8.0",
-    "next/": "https://esm.sh/next@^16.1.2/",
-    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.90.1",
-    "@clerk/nextjs/": "https://esm.sh/@clerk/nextjs@^6.36.7/",
-    "@clerk/nextjs": "https://esm.sh/@clerk/nextjs@^6.36.7"
+    "@clerk/nextjs/": "https://esm.sh/@clerk/nextjs@^6.36.9/",
+    "@clerk/nextjs": "https://esm.sh/@clerk/nextjs@^6.36.9"
   }
 }
 </script>
-  </head>
+</head>
   <body>
     <div id="root"></div>
   </body>
