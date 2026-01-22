@@ -32,6 +32,7 @@ export enum TropeType {
   SYSTEM = '系统觉醒',
   HIDDEN_EXPERT = '扮猪吃虎',
   GENIUS = '天才回归',
+  OVERCOME = '逆风翻盘',
 }
 
 export interface ScriptBlock {
@@ -49,16 +50,19 @@ export interface ScriptBlock {
 }
 
 export enum DirectorStyle {
-  SHINKAI = '清新诚意 (新海诚感)',
-  UFOTABLE = '绚烂特效 (飞碟社感)',
-  SHAFT = '抽象转场 (新房昭之感)',
-  MAPPA = '硬核写实 (MAPPA感)',
-  GHIBLI = '治愈人文 (吉卜力感)',
+  SHINKAI = '新海诚清新光影',
+  UFOTABLE = '飞碟社绚丽特效',
+  SHAFT = '新房昭之意识流',
+  MAPPA = 'MAPPA写实硬核',
+  GHIBLI = '吉卜力治愈手绘',
+  JUJUTSU = '咒术回战战斗风格',
+  DEMON_SLAYER = '鬼灭之刃细腻风格',
 }
 
 export enum ModelType {
   FLASH = 'gemini-3-flash-preview',
-  PRO = 'gemini-3-pro-preview'
+  PRO = 'gemini-3-pro-preview',
+  ULTRA = 'gemini-3-pro-preview'
 }
 
 export interface CharacterAsset {
@@ -76,6 +80,7 @@ export enum AppStage {
 }
 
 export enum WorkspaceTab {
+  AGENT = 'AGENT',
   SCRIPT = 'SCRIPT',
   OUTLINE = 'OUTLINE',
   VISUALS = 'VISUALS',
@@ -86,6 +91,7 @@ export enum WorkspaceTab {
 export enum AudienceMode {
   MALE = '男频模式',
   FEMALE = '女频模式',
+  ALL = '全受众模式',
 }
 
 export enum AmbientAtmosphere {
@@ -94,4 +100,23 @@ export enum AmbientAtmosphere {
   BATTLE = '战场硝烟',
   MYSTIC = '神秘遗迹',
   CITY = '赛博街道'
+}
+
+// 新增影视级镜头参数定义
+export interface ShotTechnicalData {
+  intensity: string;   // 动态强度
+  movement: string;    // 镜头运动
+  perspective: string; // 镜头视角
+  shotType: string;    // 景别
+  composition: string; // 构图
+  angle: string;       // 拍摄角度
+  effect: string;      // 特殊效果
+}
+
+export interface ProjectAnalysis {
+  vision: string;
+  suggestedStyle: DirectorStyle;
+  keyTropes: string[];
+  pacing: string;
+  characterProfiles: string[];
 }

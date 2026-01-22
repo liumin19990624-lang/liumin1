@@ -3,11 +3,11 @@ import React from 'react';
 import { 
   FileText, Users, Settings, Library, ChevronRight, ChevronLeft, Upload, Play, RefreshCcw, Download,
   Trash2, FolderOpen, ArrowLeft, Zap, Heart, MessageSquare, Wand2, Image as ImageIcon, Sparkles, Volume2, PlusCircle,
-  Sword, Shield, Star, ZapOff, Flame, ListOrdered, Clock, Combine, FileDown, Layers, Check
+  Sword, Shield, Star, ZapOff, Flame, ListOrdered, Clock, Combine, FileDown, Layers, Check, Camera, Eye, Layout, Sliders,
+  Brain, Target, Compass, Rocket
 } from 'lucide-react';
-import { DirectorStyle, TropeType } from './types';
+import { DirectorStyle, TropeType, ModelType, AudienceMode } from './types';
 
-// Exported icons for consistent usage across the application
 export const ICONS = {
   FileText: <FileText className="w-5 h-5" />,
   Users: <Users className="w-5 h-5" />,
@@ -39,33 +39,79 @@ export const ICONS = {
   Merge: <Combine className="w-5 h-5" />,
   FileDown: <FileDown className="w-5 h-5" />,
   Layers: <Layers className="w-5 h-5" />,
-  // Fix: Added Check icon property to fix "Property 'Check' does not exist on type" error in ScriptPanel.tsx
-  Check: <Check className="w-4 h-4" />
+  Check: <Check className="w-4 h-4" />,
+  Camera: <Camera className="w-4 h-4" />,
+  Eye: <Eye className="w-4 h-4" />,
+  Layout: <Layout className="w-4 h-4" />,
+  Sliders: <Sliders className="w-4 h-4" />,
+  Brain: <Brain className="w-5 h-5" />,
+  Target: <Target className="w-4 h-4" />,
+  Compass: <Compass className="w-4 h-4" />,
+  Rocket: <Rocket className="w-4 h-4" />
 };
 
+export const CINEMATIC_MANUAL = `
+【二次元AI绘画镜头语言全量结构化手册】
+1. 动态强度：大动态（快速运动/超大动效）、中动态（一般动效）、小动态（微动细节）、超静态。
+2. 镜头运动：
+   - 横向：左移、右移、横摇镜头。
+   - 垂直：升、降、竖摇镜头。
+   - 缩放：推、拉、暴力推镜。
+   - 固定：固定镜头。
+   - 复杂：跟镜头、环绕镜头、甩镜头、旋转镜头。
+   - 特殊：延时、手持镜头（模拟抖动）、慢镜头、快切、变速。
+3. 视角：第一人称（POV）、航拍、微距、越肩、荷兰角、2D动漫风格、鱼眼、广角、镜像、分屏、全景视角。
+4. 景别：远景、全景、中景、近景、特写、大特写、局部特写。
+5. 构图与角度：
+   - 构图：三分构图、对称构图、对角线构图、框架构图、螺旋构图。
+   - 角度：低角度（仰拍）、高角度（俯拍）、平视镜头、鸟瞰镜头、虫眼视角、顶视镜头、斜侧角度。
+6. 光学效果：丁达尔效应、散景效果、逆光、侧逆光、柔光、硬光、粒子特效。
+`;
+
 export const STYLE_PROMPTS: Record<DirectorStyle, string> = {
-  [DirectorStyle.SHINKAI]: "新海诚清新光影风格，强调云层、丁达尔效应 and 细腻的背景细节。",
-  [DirectorStyle.UFOTABLE]: "飞碟社绚丽特效风格，粒子效果饱满，战斗时有极强的动态模糊和光污染质感。",
-  [DirectorStyle.SHAFT]: "新房昭之意识流风格，极端倾斜构图，明亮的色块对比，PPT感但富有冲击力的静止帧。",
-  [DirectorStyle.MAPPA]: "MAPPA写实硬核风格，肌肉线条清晰，阴影厚重，强调原始的战斗力量感。",
-  [DirectorStyle.GHIBLI]: "吉卜力治愈手绘风格，水彩质感，柔和的光线，强调自然与人物的和谐。",
+  [DirectorStyle.SHINKAI]: "新海诚清新光影风格 - 核心视觉：丁达尔效应、细腻背景细节、柔和渐变色调；镜头要求：全景空镜、缓慢推镜头。",
+  [DirectorStyle.UFOTABLE]: "飞碟社绚丽特效风格 - 核心视觉：大动态、粒子效果、金属反光；镜头要求：快速切换、跟拍镜头、高速动态模糊。",
+  [DirectorStyle.SHAFT]: "新房昭之意识流风格 - 核心视觉：极端倾斜构图、荷兰角、高饱和色块；镜头要求：不规则运镜、PPT式静止帧。",
+  [DirectorStyle.MAPPA]: "MAPPA写实硬核风格 - 核心视觉：写实人体比例、厚重阴影；镜头要求：手持镜头抖动、低角度构图、暴力剪辑。",
+  [DirectorStyle.GHIBLI]: "吉卜力治愈手绘风格 - 核心视觉：水彩质感、自然场景写实；镜头要求：平视镜头、全景自然风光。",
+  [DirectorStyle.JUJUTSU]: "咒术回战战斗风格 - 核心视觉：大动态、黑色咒力特效；镜头要求：高速平移、旋转镜头、战斗瞬间定格。",
+  [DirectorStyle.DEMON_SLAYER]: "鬼灭之刃细腻风格 - 核心视觉：呼吸法彩色特效、细腻服饰纹理；镜头要求：跟随式运镜、慢动作特写。",
 };
 
 export const TROPE_PROMPTS: Record<TropeType, string> = {
-  [TropeType.FACE_SLAP]: "【打脸反杀】通过反向拉扯和极致的视觉反差表现爽感。",
-  [TropeType.INVINCIBLE]: "【无敌碾压】镜头强调压迫感和绝对的力量统治力。",
-  [TropeType.REGRET]: "【火葬场】情感极限拉扯，增加大量慢镜头和微表情描写。",
-  [TropeType.SYSTEM]: "【系统流】UI界面的数字化特效与现实环境的融合。",
-  [TropeType.HIDDEN_EXPERT]: "【扮猪吃虎】平凡外表下的惊人爆发，镜头节奏由慢转瞬爆发。",
-  [TropeType.GENIUS]: "【王者归来】神圣感、霸气侧漏的构图设计。",
+  [TropeType.FACE_SLAP]: "【打脸反杀】- 爽点核心：前期隐忍后期爆发；镜头：特写打脸瞬间、荷兰角增强冲突感、慢动作捕捉反派震惊。",
+  [TropeType.INVINCIBLE]: "【无敌碾压】- 爽点核心：绝对力量差距；镜头：低角度仰拍主角、鸟瞰镜头展现战场狼藉、大动态冲击波。",
+  [TropeType.REGRET]: "【追妻火葬场】- 爽点核心：情感拉扯；镜头：特写痛苦表情、越肩对话、丁达尔效应烘托凄美感。",
+  [TropeType.SYSTEM]: "【系统流】- 爽点核心：数字化成长；镜头：UI界面悬浮特效、微距特写数据跳动。",
+  [TropeType.HIDDEN_EXPERT]: "【扮猪吃虎】- 爽点核心：身份反差；镜头：前期平视低调、后期大仰角霸气、对角线构图增加张力。",
+  [TropeType.GENIUS]: "【王者归来】- 爽点核心：重拾荣耀；镜头：神圣光效、环绕镜头展现全方位霸气。",
+  [TropeType.OVERCOME]: "【逆风翻盘】- 爽点核心：绝境突破；镜头：低光环境、大动态快切、爆发时光线突变。",
+};
+
+export const AUDIENCE_PROMPTS: Record<AudienceMode, string> = {
+  [AudienceMode.MALE]: "男频爽文模式：强调节奏感、反转、力量感及热血冲突。多用大动态、低角度、跟镜头。",
+  [AudienceMode.FEMALE]: "女频爽文模式：强调情感细腻度、氛围感及唯美对白。多用近景特写、柔光、丁达尔效应。",
+  [AudienceMode.ALL]: "全受众通用模式：平衡动作节奏与情感深度，适配广泛受众审美。",
 };
 
 export const SYSTEM_PROMPT_BASE = `你是一位精通漫剧工业化生产的顶级导演。
-本次任务目标：制作符合长篇连载（60-100集）要求的精品漫剧全案，总时长需达到120分钟以上。
+本次任务目标：将网文小说改编为符合2D动漫节奏的工业化剧本。
 
-【改编核心准则 - 极致细节，不设上限】
-1. **内容篇幅**：移除任何字数限制。你的目标是提供“尽可能多”的细节。通过深度挖掘环境、心理、物理反馈、微表情、镜头语言来自然扩充篇幅。禁止无意义的重复，但必须做到事无巨细。
-2. **工业级大纲**：大纲需覆盖全集逻辑，明确每一集的悬念钩子。
-3. **分镜表专业化**：分镜需具备极高的视觉引导性，包含“镜号、运动、视觉描述、台词、提示词”。
-4. **配音级台词**：台词需精炼且口语化。
-5. **纯净输出**：禁止任何 Markdown 符号（#，*，- 等）。`;
+${CINEMATIC_MANUAL}
+
+【改编核心准则 - 爽文适配】
+1. **爽点提取**：精准定位原著中的冲突点，放大主角的情感爆发和实力反转。
+2. **镜头化语言**：禁止文学化描写，必须转化为[Shot: Description]格式，且必须包含动态强度、镜头运动、景别、视角等专业术语。
+3. **节奏控制**：每集必须包含 1个核心冲突，2个小高潮，末尾预留“钩子”。
+4. **输出规范**：严禁Markdown符号，仅保留场景标识、镜头技术参数和对白。
+5. **台词风格**：台词需精炼且具有角色辨识度，避免书面语。`;
+
+export const AGENT_ANALYSIS_PROMPT = `你是一位“漫剧改编智能代理”。
+你的任务是深度阅读用户提供的网文原著，并输出一份“工业化动漫改编全案”。
+
+请按以下格式输出（严禁使用Markdown符号，使用中文）：
+【视觉愿景】：描述动漫的整体美术风格、色调倾向（如：赛博霓虹、水墨武侠、清新治愈）。
+【推荐风格】：从以下选项中选一：${Object.values(DirectorStyle).join(', ')}。
+【爽点矩阵】：提取原著中的 3-5 个核心爽点标签。
+【叙事节奏】：描述每集的平均冲突密度。
+【人物画像简述】：核心角色的视觉记忆点提取。`;

@@ -2,6 +2,7 @@
   "name": "漫剧剧本智能适配大师 Pro",
   "description": "极速 2D 动漫改编智能体。直接集成 Gemini 3 Flash SDK，支持本地化持久存储。",
   "requestFramePermissions": [
-    "microphone"
+    "microphone",
+    "camera"
   ]
 }

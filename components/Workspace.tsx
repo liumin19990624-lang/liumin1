@@ -7,6 +7,7 @@ import OutlinePanel from './OutlinePanel.tsx';
 import CharacterVisuals from './CharacterVisuals.tsx';
 import ShotsPanel from './ShotsPanel.tsx';
 import MergePanel from './MergePanel.tsx';
+import AgentPanel from './AgentPanel.tsx';
 
 interface WorkspaceProps {
   files: KBFile[];
@@ -14,7 +15,7 @@ interface WorkspaceProps {
   onUpdateFiles?: (f: KBFile[]) => void;
 }
 
-const Workspace: React.FC<WorkspaceProps> = ({ files, initialTab = WorkspaceTab.SCRIPT, onUpdateFiles }) => {
+const Workspace: React.FC<WorkspaceProps> = ({ files, initialTab = WorkspaceTab.AGENT, onUpdateFiles }) => {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>(initialTab);
   const [mode, setMode] = useState<AudienceMode>(AudienceMode.MALE);
   const [allBlocks, setAllBlocks] = useState<any[]>([]);
@@ -55,6 +56,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ files, initialTab = WorkspaceTab.
     onUpdateFiles?.([newFile]);
   };
 
+  const navigateToTab = (tab: WorkspaceTab) => {
+    setActiveTab(tab);
+  };
+
   return (
     <div className="h-full flex overflow-hidden">
       <aside className="w-64 bg-slate-900 p-6 flex flex-col gap-8 shadow-2xl z-20 flex-shrink-0">
@@ -62,6 +67,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ files, initialTab = WorkspaceTab.
           <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6">快速作业</h2>
           <nav className="space-y-2">
             {[
+              { tab: WorkspaceTab.AGENT, icon: ICONS.Brain, label: '策划代理', color: 'bg-indigo-600' },
               { tab: WorkspaceTab.SCRIPT, icon: ICONS.FileText, label: '生成剧本', color: 'bg-blue-600' },
               { tab: WorkspaceTab.SHOTS, icon: ICONS.Library, label: '分镜脚本', color: 'bg-violet-600' },
               { tab: WorkspaceTab.OUTLINE, icon: ICONS.Users, label: '提取大纲', color: 'bg-indigo-600' },
@@ -107,6 +113,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ files, initialTab = WorkspaceTab.
 
       <section className="flex-1 bg-white flex flex-col min-h-0 relative">
         <div className="flex-1 min-h-0 flex flex-col">
+          {activeTab === WorkspaceTab.AGENT && <AgentPanel files={files} onNavigate={navigateToTab} />}
           {activeTab === WorkspaceTab.SCRIPT && <ScriptPanel files={files} mode={mode} modelType={ModelType.FLASH} onSaveToKB={handleSaveToKB} />}
           {activeTab === WorkspaceTab.OUTLINE && <OutlinePanel files={files} onSaveToKB={handleSaveToKB} />}
           {activeTab === WorkspaceTab.VISUALS && <CharacterVisuals mode={mode} files={files} onSaveToKB={handleSaveToKB} />}

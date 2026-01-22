@@ -21,10 +21,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "额度不足" }, { status: 403 });
     }
 
+    // Initialize GenAI client correctly
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: prompt,
+      // Set contents with proper part structure
+      contents: [{ parts: [{ text: prompt }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {

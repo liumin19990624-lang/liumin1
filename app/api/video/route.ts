@@ -21,7 +21,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "算力点数不足以支撑 4K 视频渲染" }, { status: 403 });
     }
 
+    // Always use new GoogleGenAI({ apiKey: process.env.API_KEY })
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
     const operation = await ai.models.generateVideos({
       model: 'veo-3.1-fast-generate-preview',
       prompt: prompt,
@@ -36,7 +38,7 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    // Fixed: Property 'id' does not exist on type 'GenerateVideosOperation', use 'name'
+    // Property 'id' does not exist on type 'GenerateVideosOperation', use 'name'
     return NextResponse.json({ operationId: operation.name });
   } catch (error: any) {
     console.error("Veo Error:", error);
@@ -50,12 +52,15 @@ export async function GET(req: NextRequest) {
   if (!id) return NextResponse.json({ error: "Missing ID" }, { status: 400 });
 
   try {
+    // Create new instance before each call to ensure up-to-date key access
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    // Fixed: getVideosOperation requires a proper GenerateVideosOperation structure, using 'name' instead of 'id'
+    
+    // getVideosOperation expects an object with an operation name
     const operation = await ai.operations.getVideosOperation({ operation: { name: id } as any });
 
     if (operation.done) {
       const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+      // Append API key when fetching from the download link as per guidelines
       return NextResponse.json({ done: true, videoUrl: `${downloadLink}&key=${process.env.API_KEY}` });
     }
 

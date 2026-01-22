@@ -5,81 +5,95 @@ import { auth } from "@clerk/nextjs/server";
 
 export async function POST(req: NextRequest) {
   const { userId } = auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userId) {
+    return NextResponse.json({ 
+      error: { code: 401, message: "Unauthorized", status: "UNAUTHENTICATED" } 
+    }, { status: 401 });
+  }
+
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    return NextResponse.json({ 
+      error: { code: 500, message: "Server configuration error: API_KEY is missing.", status: "INTERNAL" } 
+    }, { status: 500 });
+  }
 
   try {
-    const { prompt, config, systemInstruction, stream: shouldStream, model: requestedModel } = await req.json();
+    const body = await req.json();
+    const { prompt, config, systemInstruction, stream: shouldStream, model: requestedModel } = body;
+
+    // Use Gemini API client with required named parameter
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    // Dynamically use the requested model or default to flash
+
     const modelName = requestedModel || 'gemini-3-flash-preview';
 
-    // Handle Image Generation Models (Nano Banana series)
-    if (modelName === 'gemini-2.5-flash-image' || modelName === 'gemini-3-pro-image-preview') {
+    // 图像生成逻辑
+    if (modelName.includes('image')) {
       const response = await ai.models.generateContent({
         model: modelName,
-        contents: prompt,
+        contents: [{ parts: [{ text: prompt }] }],
         config: { ...config, systemInstruction },
       });
       
       let base64Image = "";
-      if (response.candidates?.[0]?.content?.parts) {
-        for (const part of response.candidates[0].content.parts) {
-          // Find the image part in the response parts
-          if (part.inlineData) {
-            base64Image = part.inlineData.data;
-            break;
-          }
+      const candidates = response.candidates || [];
+      const parts = candidates[0]?.content?.parts || [];
+      for (const part of parts) {
+        if (part.inlineData) {
+          base64Image = part.inlineData.data;
+          break;
         }
       }
       return NextResponse.json({ image: base64Image ? `data:image/png;base64,${base64Image}` : "" });
     }
 
+    // 流式响应逻辑
     if (shouldStream) {
-      const response = await ai.models.generateContentStream({
+      const responseStream = await ai.models.generateContentStream({
         model: modelName,
-        contents: prompt,
-        config: {
-          ...config,
-          systemInstruction,
-        },
+        contents: [{ parts: [{ text: prompt }] }],
+        config: { ...config, systemInstruction },
       });
 
       const encoder = new TextEncoder();
-      const stream = new ReadableStream({
+      const readableStream = new ReadableStream({
         async start(controller) {
           try {
-            for await (const chunk of response) {
-              // Access .text property directly
+            for await (const chunk of responseStream) {
               const text = chunk.text;
-              if (text) controller.enqueue(encoder.encode(text));
+              if (text) {
+                controller.enqueue(encoder.encode(text));
+              }
             }
           } catch (e: any) {
-            console.error("Stream generation internal error:", e);
+            console.error("Stream reader error:", e);
           } finally {
             controller.close();
           }
         },
       });
 
-      return new Response(stream, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+      return new Response(readableStream, { 
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' } 
+      });
     } else {
+      // 静态响应逻辑
       const response = await ai.models.generateContent({
         model: modelName,
-        contents: prompt,
-        config: { 
-          ...config, 
-          systemInstruction, 
-        },
+        contents: [{ parts: [{ text: prompt }] }],
+        config: { ...config, systemInstruction },
       });
+      // Extract text from GenerateContentResponse using the .text property
       return NextResponse.json({ text: response.text });
     }
   } catch (error: any) {
-    console.error("Chat API Error:", error);
-    // Return a clean JSON error response that matches the user's reported format
+    console.error("Chat API Critical Error:", error);
+    
+    let message = error.message || "An error occurred with the AI service.";
     return NextResponse.json({ 
       error: {
         code: 500,
-        message: error.message || "Gemini API failure",
+        message: message,
         status: "INTERNAL"
       }
     }, { status: 500 });
